@@ -36,6 +36,7 @@ public class BetterSanctumPlugin : BaseSettingsPlugin<BetterSanctumSettings>
     private List<RectangleF> _activeObstructions;
     private EffectHelper _effectHelper;
     private RewardTracker _rewardTracker;
+    private SanctumProbe _probe;
     private Func<BaseItemType, double> _currencyPrice;
     private readonly Stopwatch _sincePriceLookupStopwatch = Stopwatch.StartNew();
     private double _divineChaosRate;
@@ -64,7 +65,21 @@ public class BetterSanctumPlugin : BaseSettingsPlugin<BetterSanctumSettings>
     {
         _effectHelper = new EffectHelper(GameController, Graphics, Settings);
         _rewardTracker = new RewardTracker(LogFilePath("sanctum-rewards.csv"));
+        _probe = new SanctumProbe(LogFilePath("sanctum-probe.txt"));
         return base.Initialise();
+    }
+
+    // The hub is a static zone reached from the map device, so it never shows up in the
+    // room dump, which only fires while a floor map is open. This is the only place its
+    // name can be caught.
+    public override void AreaChange(AreaInstance area)
+    {
+        if (Settings.Debug.ProbeSanctumState)
+        {
+            _probe.LogAreaChange(area, GameController?.IngameState?.IngameUi?.SanctumFloorWindow);
+        }
+
+        base.AreaChange(area);
     }
 
     // Resolved lazily and retried: Ninja Price registers its bridge method in its own
@@ -441,6 +456,14 @@ public class BetterSanctumPlugin : BaseSettingsPlugin<BetterSanctumSettings>
 
     public override void Render()
     {
+        // Ahead of every early return below, since the point of the probe is the state
+        // outside a floor - in the hub, where the floor map is not open at all.
+        if (Settings.Debug.ProbeSanctumState)
+        {
+            _probe.LogState(GameController?.IngameState?.IngameUi?.SanctumFloorWindow,
+                GameController?.Area?.CurrentArea?.Area?.RawName);
+        }
+
         if (Settings.DuplicateRun)
         {
             PreventLastOffer();
