@@ -1768,12 +1768,31 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
                 return 0;
             }
 
-            return (int)Math.Min(chaos / Settings.Routing.ChaosPerPoint.Value, Settings.Routing.PricePointCap.Value);
+            var points = chaos / Settings.Routing.ChaosPerPoint.Value;
+
+            // Uncapped where price is doing the ranking: the cap exists to stop price
+            // reordering tiers, and in that mode reordering them is the point. The scale
+            // is then ChaosPerPoint alone.
+            return (int)(Settings.Routing.PriceRanksTopRewards
+                ? points
+                : Math.Min(points, Settings.Routing.PricePointCap.Value));
         }
         catch (Exception)
         {
             return 0;
         }
+    }
+
+    // Whether this reward is ranked by price rather than by its tier. Tier 0 is left out
+    // deliberately: it is a constraint compared ahead of every sum, not a weight, and
+    // pricing it would demote a must-take into something merely valuable.
+    private bool IsPriceRanked(int assignedValue, int pricePoints)
+    {
+        return Settings.Routing.PriceRanksTopRewards &&
+               Settings.Routing.UsePricesInRouting &&
+               pricePoints > 0 &&
+               assignedValue > BetterSanctumTrackerSettings.PrioritizeValue &&
+               assignedValue <= Settings.Routing.PriceMaxTier;
     }
 
     // How many rooms of each tier this room contributes, kept per axis. Currency counts
@@ -1793,6 +1812,7 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
         var bestSlotWorth = 0;
         var bestSlotMultiplier = 1;
         var bestSlotPricePoints = 0;
+        var bestSlotPriceRanked = false;
         foreach (var (reward, order) in room.GetRoomsWithOrder())
         {
             var assignedValue = Settings.GetCurrencyTier(reward.CurrencyName, order);
@@ -1811,23 +1831,35 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
 
             var multiplier = order == 2 ? thirdSlotMultiplier : 1;
             var pricePoints = PricePointsFor(reward, order, floor, assignedValue);
-            var worth = RewardWeights[value] * multiplier + pricePoints;
+
+            // A price-ranked slot is worth its price and nothing else, so slots inside the
+            // band are compared against each other on value rather than all reading 100.
+            var priceRanked = IsPriceRanked(assignedValue, pricePoints);
+            var worth = priceRanked ? pricePoints : RewardWeights[value] * multiplier + pricePoints;
             if (bestSlotValue < 0 || worth > bestSlotWorth)
             {
                 bestSlotValue = value;
                 bestSlotWorth = worth;
                 bestSlotMultiplier = multiplier;
                 bestSlotPricePoints = pricePoints;
+                bestSlotPriceRanked = priceRanked;
             }
         }
 
         if (bestSlotValue >= 0)
         {
-            // Counting it twice is what doubles its weight
-            counts[Slot(AxisReward, bestSlotValue)] += bestSlotMultiplier;
+            // Inside the priced band the tier count is replaced by the price rather than
+            // added to, which is what lets one expensive reward beat two ordinary ones.
+            // Counting the tier as well would leave every room in the band worth 100 each
+            // before price was considered, and two of those always beat one.
+            if (!bestSlotPriceRanked)
+            {
+                // Counting it twice is what doubles its weight
+                counts[Slot(AxisReward, bestSlotValue)] += bestSlotMultiplier;
+            }
 
-            // Capped, so price orders currencies you rated alike without ever
-            // reordering the tiers themselves
+            // Capped outside the priced band, so price orders currencies you rated alike
+            // without ever reordering the tiers themselves
             counts[BonusIndex] += bestSlotPricePoints;
         }
 

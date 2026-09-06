@@ -788,6 +788,7 @@ public class RoutingSettings
         "Tier 0 is always routed to and tier 8 never is, unless a 0 lies beyond it.",
         "Use prices in routing asks the Ninja Price plugin what a reward is worth and adds it as capped points, so currencies you rated the same are ordered by value - fracturing over divine when it is worth more. Quantity is assumed to be one, or two for the third slot on floor 4, which is close for the expensive currencies that decide routes and understates cheap ones that do not. Only tiers up to Price max tier are affected, since the cap bounds one room rather than a whole route, and the tier counted is the one you assigned rather than the floor-adjusted one - otherwise the floor 3 bonus would drag cheap stacked currency into the priced band.",
         "Price max tier is the worst tier a price still reaches, so it switches pricing off from the good end down rather than the bad end up. At 0 only tier-0 rewards are priced - for most tier sets that is mirrors alone, and every other reward then shows no price on the map and contributes no points to routing, so two tier-1 rewards tie exactly and the route falls through to room types. Set it to 1 to price the rewards that actually decide routes.",
+        "Price ranks top rewards changes what happens inside that band: instead of every reward there counting as its tier and price breaking the tie, the reward is ranked on price alone. Two tier-1 rooms no longer beat one automatically - a single reward worth more than both together wins. Rewards outside the band are untouched, and tier 0 stays a constraint rather than becoming a price. Price is uncapped in this mode, since capping it is what stops it reordering tiers and reordering them is the point, so Chaos per point is the only scale left: raise it until the routes look right.",
         "Bias strength scales the floor adjustments only, each point being one tier step: on floors 3-4 good currency improves and Deal gains 50 points, on floors 1-2 Treasure and Merchant improve unless you are running Hour of Divinity. Set it to 0 to score purely on the tiers you assigned.",
         "Relic adjustments are not scaled and apply at any strength: Hour of Divinity flattens BoonFountain to neutral, Gilded Chalice flattens Fountain.");
 
@@ -810,6 +811,11 @@ public class RoutingSettings
     // decide routes, and they are rare enough per route that accumulated price cannot
     // outgrow a tier step.
     public RangeNode<int> PriceMaxTier { get; set; } = new RangeNode<int>(1, 0, 8);
+
+    // Ranks rewards inside the priced band by what they are worth instead of by tier.
+    // Off by default: it deliberately breaks the rule that price never reorders tiers,
+    // which is the rule the rest of the weighting is calibrated against.
+    public ToggleNode PriceRanksTopRewards { get; set; } = new ToggleNode(false);
 
     // What a deal room is worth from floor 3, in the same units as the tier weights:
     // a tier-1 reward is 100, a bad affliction is -70.
