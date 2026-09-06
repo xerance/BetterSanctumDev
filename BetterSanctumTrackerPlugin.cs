@@ -775,11 +775,17 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
         try
         {
             var floorData = GameController?.IngameState?.IngameUi?.SanctumFloorWindow?.FloorData;
-            if (floorData == null || floorData.MaxResolve <= 0)
+            if (floorData == null)
             {
                 return;
             }
 
+            // Deliberately not gated on resolve. Entering a room leaves FloorData resolving
+            // to a stale struct until the map is next opened, and the reward window opens
+            // inside exactly that gap - so a resolve check rejects every offer there is.
+            // RoomChoices reads correctly on that struct even while the numbers beside it
+            // do not, and the tracker validates the room against the floor it already
+            // mapped, which catches a bad read without relying on resolve at all.
             var choices = floorData.RoomChoices is IEnumerable rawChoices
                 ? rawChoices.Cast<object>().Select(Convert.ToInt32).ToList()
                 : new List<int>();
@@ -815,7 +821,15 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
                 });
             }
 
-            _runTracker.NoteOffers(floor, _lastKnownFloorPrefix, choices.Count - 1, choices[^1], offers);
+            var layer = choices.Count - 1;
+            var accepted = _runTracker.NoteOffers(floor, _lastKnownFloorPrefix, layer, choices[^1], offers);
+
+            // Silence here is what let this go unnoticed for a week of runs, so the probe
+            // says whether each window was taken and, when it was not, why.
+            if (Settings.Debug.ProbeSanctumState)
+            {
+                _probe.LogOfferCapture(floor, layer, choices[^1], offers.Count, accepted);
+            }
         }
         catch (Exception e)
         {

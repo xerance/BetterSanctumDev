@@ -47,6 +47,13 @@ public class SanctumProbe
     // Sampled once per area rather than on change: buffs churn constantly in combat, an
     // affliction lasts the floor, so one sample per room says what is needed and keeps
     // the file readable.
+    // Whether the reward window was recorded against a room, and if not, what stopped it.
+    // The capture failed silently for a week of runs because nothing said either way.
+    public void LogOfferCapture(int floor, int layer, int room, int offerCount, string outcome)
+    {
+        Write($"offercapture floor={floor} layer={layer} room={room} offers={offerCount} -> {outcome}");
+    }
+
     public void LogBuffs(IEnumerable<string> buffNames)
     {
         try

@@ -135,19 +135,35 @@ public class SanctumRunTracker
     // Recorded against the room you are standing in rather than a room on the map, since
     // the map is shut while the reward window is open. Merged by slot: the window is read
     // every frame it is up, and the same three lines arrive over and over.
-    public void NoteOffers(int floor, string prefix, int layer, int room, List<OfferObservation> offers)
+    public string NoteOffers(int floor, string prefix, int layer, int room, List<OfferObservation> offers)
     {
-        if (!IsRunning || floor <= 0 || offers == null || offers.Count == 0)
+        if (!IsRunning)
         {
-            return;
+            return "no run";
+        }
+
+        if (floor <= 0 || offers == null || offers.Count == 0)
+        {
+            return "nothing to record";
         }
 
         var floorState = Current.Floor(floor, prefix);
+
+        // The room is validated against the floor already mapped rather than against the
+        // resolve reading beside it, which is stale at exactly the moment the reward
+        // window is open. A layer past the end of the floor, or a negative one, is a bad
+        // read of RoomChoices and not a room anyone is standing in.
+        if (layer < 0 || (floorState.LayerCount > 0 && layer >= floorState.LayerCount))
+        {
+            return $"layer {layer} outside floor of {floorState.LayerCount}";
+        }
+
         var key = FloorObservation.Key(layer, room);
         if (!floorState.Rooms.TryGetValue(key, out var observation))
         {
-            // A room can be stood in before it was ever seen on the map, so the offer
-            // creates the room rather than being dropped for want of one.
+            // A room can be stood in before the map ever showed it - rooms reveal a few
+            // layers ahead - so an unknown room is created rather than dropped, as long as
+            // its layer is one this floor actually has.
             observation = new RoomObservation { Layer = layer, Room = room };
             floorState.Rooms[key] = observation;
         }
@@ -173,6 +189,7 @@ public class SanctumRunTracker
         }
 
         Save(force: false);
+        return $"recorded {observation.Offers.Count}";
     }
 
     // A second route solve, independent of the value-based one the overlay draws: this one
