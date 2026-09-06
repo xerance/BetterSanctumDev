@@ -17,13 +17,17 @@ namespace BetterSanctum;
 public class SanctumRunTracker
 {
     private const string RunHeader =
-        "when;runId;started;ended;floor;prefix;layers;roomsSeen;roomsEntered;floorCompleted;" +
-        "rewardsObscured;roomTypesObscured;afflictionsObscured;" +
-        "tier01Visible;tier01Collectable;tier01Skipped;dealRooms;dealTier01;assumedHaul;hubVisits;extraHubVisits";
+        "when;runId;started;ended;floor;prefix;layers;roomsSeen;rewardRooms;layersEntered;floorCompleted;" +
+        "rewardsObscured;roomTypesObscured;afflictionsObscured;afflictionsTaken;" +
+        "tier01Visible;tier01Collectable;tier01Skipped;dealRooms;assumedHaul;assumedValue;valueBasis;" +
+        "hubVisits;extraHubVisits";
 
+    // A row per room now, not per reward slot: a room with no rewards - a deal, a fountain,
+    // the boss - carried none and so appeared nowhere, which made the room-type columns
+    // impossible to count against and left roomsSeen unexplainable.
     private const string RoomHeader =
-        "when;runId;floor;layer;room;slot;currency;quantity;tier;fightRoom;rewardRoom;affliction;" +
-        "entered;onTier01Route;assumedTake";
+        "when;runId;floor;layer;room;slot;currency;quantity;tier;fightRoom;rewardRoom;roomAffliction;" +
+        "entered;onTier01Route;assumedTake;slotValue";
 
     private readonly string _runPath;
     private readonly string _roomPath;
@@ -207,6 +211,31 @@ public class SanctumRunTracker
     // taken. Price when a price lookup is available, since that is the question being
     // asked; otherwise the tier assigned in settings, best tier first and larger quantity
     // breaking ties.
+    // Every slot's score is written out beside it, so which slot the policy picked and why
+    // is auditable from the file rather than being a number to take on trust.
+    private static double SlotValue(SlotObservation slot, Func<string, double> unitPrice)
+    {
+        if (slot == null || string.IsNullOrEmpty(slot.Currency))
+        {
+            return 0;
+        }
+
+        if (unitPrice != null)
+        {
+            var chaos = unitPrice(slot.Currency) * slot.Quantity;
+            if (chaos > 0)
+            {
+                return chaos;
+            }
+        }
+
+        // No price for this currency is not the same as no price at all: a lookup that
+        // knows chaos but not chromatics would otherwise score the chromatics zero and
+        // hand the room to whichever slot came first. Tiers run 0 best to 8 worst, so
+        // they inverted, and kept negative so a real chaos value always outranks them.
+        return -((slot.Tier + 1) * 1000.0) + slot.Quantity;
+    }
+
     private static SlotObservation AssumedTake(RoomObservation room, Func<string, double> unitPrice)
     {
         SlotObservation best = null;
@@ -218,17 +247,7 @@ public class SanctumRunTracker
                 continue;
             }
 
-            double score;
-            if (unitPrice != null)
-            {
-                score = unitPrice(slot.Currency) * slot.Quantity;
-            }
-            else
-            {
-                // Tiers run 0 best to 8 worst, so they have to be inverted to score
-                score = (8 - slot.Tier) * 1000.0 + slot.Quantity;
-            }
-
+            var score = SlotValue(slot, unitPrice);
             if (score > bestScore)
             {
                 bestScore = score;
@@ -238,6 +257,17 @@ public class SanctumRunTracker
 
         return best;
     }
+
+    // Golden, Red and Purple Smoke are not player buffs - a full run of buff samples holds
+    // no Sanctum entry at all - so the only readable trace of them is the room that grants
+    // one. An affliction is gained by entering the room carrying it and then lasts the run,
+    // so the rooms actually entered say which were active.
+    //
+    // A lower bound, deliberately: afflictions also arrive from deals, curse fountains and
+    // Accursed Prism, none of which are visible here. A set flag is therefore trustworthy
+    // and a clear one is only the absence of evidence. Every affliction picked up this way
+    // is written out whole in afflictionsTaken, so the three smoke flags can be checked
+    // against the list rather than believed.
 
     private static string DescribeHaul(IEnumerable<SlotObservation> taken)
     {
@@ -268,6 +298,12 @@ public class SanctumRunTracker
             // baseline an informative count is measured against.
             var expectedHubVisits = run.Floors.Count;
 
+            var highestFloor = run.Floors.Keys.DefaultIfEmpty(0).Max();
+
+            // Afflictions last the run, so they carry from floor to floor rather than
+            // being read afresh on each.
+            var afflictionsTaken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
             foreach (var floor in run.Floors.Values.OrderBy(x => x.Floor))
             {
                 var (collectable, route) = BestTier01Route(floor);
@@ -279,14 +315,40 @@ public class SanctumRunTracker
                 }
 
                 var taken = new List<SlotObservation>();
+                var takenValue = 0.0;
+                var pricedAny = false;
                 foreach (var room in floor.Rooms.Values.OrderBy(x => x.Layer).ThenBy(x => x.Room))
                 {
                     var key = FloorObservation.Key(room.Layer, room.Room);
                     var isEntered = entered.Contains(key);
+                    var onRoute = route.Contains(key);
                     var assumed = isEntered ? AssumedTake(room, unitPrice) : null;
                     if (assumed != null)
                     {
                         taken.Add(assumed);
+                        var value = SlotValue(assumed, unitPrice);
+                        if (value > 0)
+                        {
+                            takenValue += value;
+                            pricedAny = true;
+                        }
+                    }
+
+                    if (isEntered && room.Affliction != null)
+                    {
+                        afflictionsTaken.Add(room.Affliction);
+                    }
+
+                    // A room with no rewards still gets a row, so deals, fountains and
+                    // bosses can be counted rather than vanishing from the file.
+                    if (room.Slots.Count == 0)
+                    {
+                        roomRows.Add(Row(
+                            run.RunId, floor.Floor, room.Layer, room.Room, null,
+                            null, null, null,
+                            room.FightRoomId, room.RewardRoomId, room.Affliction,
+                            isEntered, onRoute, false, null));
+                        continue;
                     }
 
                     foreach (var slot in room.Slots.OrderBy(x => x.Slot))
@@ -295,20 +357,34 @@ public class SanctumRunTracker
                             run.RunId, floor.Floor, room.Layer, room.Room, slot.Slot,
                             slot.Currency, slot.Quantity, slot.Tier,
                             room.FightRoomId, room.RewardRoomId, room.Affliction,
-                            isEntered, route.Contains(key), assumed != null && assumed.Slot == slot.Slot));
+                            isEntered, onRoute, assumed != null && assumed.Slot == slot.Slot,
+                            Math.Round(SlotValue(slot, unitPrice), 2)));
                     }
                 }
 
-                var dealRooms = floor.Rooms.Values.Where(x => x.IsDeal).ToList();
+                // The map is only ever open before a room is entered, so the last layer's
+                // choice is never seen and a completed floor reads one short. Whether a
+                // floor was finished is therefore taken from a later floor existing, and
+                // is genuinely unknown for the last floor of the run.
+                var completed = floor.Floor < highestFloor
+                    ? "1"
+                    : floor.Choices.Count >= floor.LayerCount ? "1" : "unknown";
+
+                var dealRooms = floor.Rooms.Values.Count(x => x.IsDeal);
                 runRows.Add(Row(
                     run.RunId, run.Started.ToString("s"), run.Ended?.ToString("s"),
                     floor.Floor, floor.Prefix, floor.LayerCount,
-                    floor.Rooms.Count, floor.Choices.Count,
-                    floor.LayerCount > 0 && floor.Choices.Count >= floor.LayerCount,
-                    floor.RewardsObscured, floor.RoomTypesObscured, floor.AfflictionsObscured,
+                    floor.Rooms.Count, floor.Rooms.Values.Count(x => x.Slots.Count > 0),
+                    floor.Choices.Count, completed,
+                    floor.RewardsObscured || afflictionsTaken.Contains("Golden Smoke"),
+                    floor.RoomTypesObscured || afflictionsTaken.Contains("Red Smoke"),
+                    floor.AfflictionsObscured || afflictionsTaken.Contains("Purple Smoke"),
+                    string.Join(", ", afflictionsTaken.OrderBy(x => x, StringComparer.Ordinal)),
                     visible, collectable, Math.Max(visible - collectable, 0),
-                    dealRooms.Count, dealRooms.Sum(x => x.Tier01Count),
+                    dealRooms,
                     DescribeHaul(taken),
+                    pricedAny ? Math.Round(takenValue, 2) : (object)null,
+                    unitPrice == null ? "tier" : pricedAny ? "chaos" : "tier",
                     run.HubVisits, Math.Max(run.HubVisits - expectedHubVisits, 0)));
             }
 
