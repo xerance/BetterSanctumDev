@@ -202,36 +202,86 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
             return cached;
         }
 
-        var lookup = ResolvePriceLookup();
-        var categories = RemoteMemoryObject.pTheGame?.Files?.SanctumDeferredRewardCategories?.EntriesList;
-        if (lookup == null || categories == null)
+        var chaos = PriceOf(FindCategoryBaseType(currencyName));
+
+        // Only a real price is remembered. Caching a zero was pinning whatever went wrong
+        // in the first frame for a whole minute, and the reward tables are not always
+        // loaded by the time the floor map first opens - Render already reloads them for
+        // the room list on the same grounds.
+        if (chaos > 0)
         {
-            // Not cached: the bridge resolves late, so a miss now may succeed shortly
+            _priceByCurrency[currencyName] = chaos;
+        }
+
+        return chaos;
+    }
+
+    // Both sources are tried before giving up: the BaseType the room's own reward carries,
+    // and the one on the matching entry of the game's reward category table. The reward
+    // window prices from the table and works; the floor map priced from room data and did
+    // not, and neither is obviously the wrong answer, so this takes whichever answers.
+    private double UnitPriceFor(SanctumDeferredRewardCategory reward)
+    {
+        var currencyName = reward?.CurrencyName;
+        if (string.IsNullOrEmpty(currencyName))
+        {
             return 0;
         }
 
-        double chaos = 0;
-        foreach (var category in categories)
+        if (_priceByCurrency.TryGetValue(currencyName, out var cached))
         {
-            if (category?.BaseType == null || category.CurrencyName != currencyName)
-            {
-                continue;
-            }
-
-            try
-            {
-                chaos = lookup(category.BaseType);
-            }
-            catch (Exception)
-            {
-                chaos = 0;
-            }
-
-            break;
+            return cached;
         }
 
-        _priceByCurrency[currencyName] = chaos;
+        var chaos = PriceOf(reward.BaseType);
+        if (chaos <= 0)
+        {
+            chaos = PriceOf(FindCategoryBaseType(currencyName));
+        }
+
+        if (chaos > 0)
+        {
+            _priceByCurrency[currencyName] = chaos;
+        }
+
         return chaos;
+    }
+
+    private double PriceOf(BaseItemType baseType)
+    {
+        var lookup = ResolvePriceLookup();
+        if (lookup == null || baseType == null)
+        {
+            return 0;
+        }
+
+        try
+        {
+            return lookup(baseType);
+        }
+        catch (Exception)
+        {
+            return 0;
+        }
+    }
+
+    private static BaseItemType FindCategoryBaseType(string currencyName)
+    {
+        var categories = RemoteMemoryObject.pTheGame?.Files?.SanctumDeferredRewardCategories?.EntriesList;
+        if (categories == null || string.IsNullOrEmpty(currencyName))
+        {
+            return null;
+        }
+
+        foreach (var category in categories)
+        {
+            if (category?.BaseType != null && category.CurrencyName == currencyName)
+            {
+                return category.BaseType;
+            }
+        }
+
+        return null;
     }
 
     // A unit price only. Reward quantity is not exposed anywhere in room data, so this
@@ -244,7 +294,7 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
             return "";
         }
 
-        var chaos = UnitPriceForCurrency(reward?.CurrencyName);
+        var chaos = UnitPriceFor(reward);
         return chaos > 0 ? $" ({FormatPrice(chaos)})" : "";
     }
 
@@ -972,6 +1022,7 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
                 };
 
                 DumpRewardTables(lines);
+                DumpPricing(lines, roomsByLayer);
                 for (var layerIndex = 0; layerIndex < roomsByLayer.Count; layerIndex++)
                 {
                     var roomLayer = roomsByLayer[layerIndex];
@@ -1408,6 +1459,59 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
         }
     }
 
+    // Why a reward on the map has no price. Two guesses at this have now been wrong, so
+    // rather than a third this reports every step for each currency the floor is showing:
+    // whether the price bridge resolved at all, whether the reward carries a BaseType,
+    // whether the category table holds an entry of that name, and what the lookup returns
+    // for each. Names are quoted, since a trailing space would explain a failed match and
+    // is invisible otherwise.
+    private void DumpPricing(List<string> lines, List<List<SanctumRoomElement>> roomsByLayer)
+    {
+        var lookup = ResolvePriceLookup();
+        var categories = RemoteMemoryObject.pTheGame?.Files?.SanctumDeferredRewardCategories?.EntriesList;
+        lines.Add($"PRICING bridge={(lookup == null ? "<null>" : "resolved")} " +
+                  $"categories={(categories == null ? "<null>" : categories.Count.ToString())} " +
+                  $"showRewardPrices={Settings.MapDisplay.ShowRewardPrices.Value} " +
+                  $"priceMaxTier={Settings.Routing.PriceMaxTier.Value} " +
+                  $"usePricesInRouting={Settings.Routing.UsePricesInRouting.Value}");
+
+        var seen = new HashSet<string>();
+        foreach (var roomLayer in roomsByLayer)
+        {
+            foreach (var room in roomLayer)
+            {
+                foreach (var (reward, order) in room.GetRoomsWithOrder())
+                {
+                    var currencyName = reward.CurrencyName;
+                    if (currencyName == null || !seen.Add(currencyName))
+                    {
+                        continue;
+                    }
+
+                    var fromCategory = FindCategoryBaseType(currencyName);
+                    lines.Add($"PRICING \"{currencyName}\" tier={Settings.GetCurrencyTier(currencyName, order)} " +
+                              $"rewardBaseType={(reward.BaseType == null ? "<null>" : $"\"{reward.BaseType.BaseName}\"")} " +
+                              $"rewardPrice={PriceOf(reward.BaseType)} " +
+                              $"categoryBaseType={(fromCategory == null ? "<no match>" : $"\"{fromCategory.BaseName}\"")} " +
+                              $"categoryPrice={PriceOf(fromCategory)}");
+                }
+            }
+        }
+
+        // The table's own names, to read against the reward names above when a match
+        // fails: the two are supposed to be the same strings.
+        if (categories == null)
+        {
+            return;
+        }
+
+        foreach (var category in categories)
+        {
+            lines.Add($"PRICINGTABLE \"{category?.CurrencyName}\" base=\"{category?.BaseType?.BaseName}\" " +
+                      $"price={PriceOf(category?.BaseType)}");
+        }
+    }
+
     private static string DescribeMember(object target, string name)
     {
         if (target == null)
@@ -1642,7 +1746,7 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
         try
         {
             var quantity = BetterSanctumTrackerSettings.GetRewardQuantity(reward?.CurrencyName, order, floor);
-            var chaos = UnitPriceForCurrency(reward?.CurrencyName) * quantity;
+            var chaos = UnitPriceFor(reward) * quantity;
             if (chaos <= 0)
             {
                 return 0;
