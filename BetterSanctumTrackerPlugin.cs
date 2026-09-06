@@ -21,7 +21,7 @@ using Vector2 = System.Numerics.Vector2;
 
 namespace BetterSanctum;
 
-public class BetterSanctumPlugin : BaseSettingsPlugin<BetterSanctumSettings>
+public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTrackerSettings>
 {
     private readonly Stopwatch _sinceLastReloadStopwatch = Stopwatch.StartNew();
     private Random rndColor = new Random();
@@ -326,7 +326,7 @@ public class BetterSanctumPlugin : BaseSettingsPlugin<BetterSanctumSettings>
             return;
         }
 
-        var floor = BetterSanctumSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix);
+        var floor = BetterSanctumTrackerSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix);
         foreach (var offer in offerWindow.Children)
         {
             var text = offer.Children.Count > 1 ? offer.Children[1].Text : null;
@@ -518,7 +518,7 @@ public class BetterSanctumPlugin : BaseSettingsPlugin<BetterSanctumSettings>
     {
         var floor = new FloorObservation
         {
-            Floor = BetterSanctumSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix),
+            Floor = BetterSanctumTrackerSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix),
             Prefix = _lastKnownFloorPrefix,
             LayerCount = roomsByLayer.Count,
         };
@@ -575,7 +575,7 @@ public class BetterSanctumPlugin : BaseSettingsPlugin<BetterSanctumSettings>
                     {
                         Slot = order,
                         Currency = reward.CurrencyName,
-                        Quantity = BetterSanctumSettings.GetRewardQuantity(reward.CurrencyName, order, floor.Floor),
+                        Quantity = BetterSanctumTrackerSettings.GetRewardQuantity(reward.CurrencyName, order, floor.Floor),
                         Tier = Settings.GetCurrencyTier(reward.CurrencyName, order),
                     });
                 }
@@ -763,7 +763,7 @@ public class BetterSanctumPlugin : BaseSettingsPlugin<BetterSanctumSettings>
 
         if (Settings.Debug.TrackRewards)
         {
-            var trackedFloor = BetterSanctumSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix);
+            var trackedFloor = BetterSanctumTrackerSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix);
             if (hoveredRoom != null)
             {
                 TrackHoveredTooltip(hoveredRoom, trackedFloor);
@@ -926,7 +926,7 @@ public class BetterSanctumPlugin : BaseSettingsPlugin<BetterSanctumSettings>
         var bestRouteOrder = new List<(int Layer, int Room)>();
         if (Settings.Routing.EnablePathfinding && Settings.Routing.BestPathFrameThickness > 0 && roomsByLayer.Count > 0)
         {
-            var floor = BetterSanctumSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix);
+            var floor = BetterSanctumTrackerSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix);
 
             var routeValue = new Dictionary<(int, int), (int[] Counts, int Next)>();
             for (var layerIndex = roomsByLayer.Count - 1; layerIndex >= 0; layerIndex--)
@@ -1345,8 +1345,8 @@ public class BetterSanctumPlugin : BaseSettingsPlugin<BetterSanctumSettings>
     // never improve something already at or below neutral.
     private int AdjustCurrencyValue(int value, int floor)
     {
-        if (value is BetterSanctumSettings.PrioritizeValue or BetterSanctumSettings.BlockValue ||
-            value >= BetterSanctumSettings.NeutralValue)
+        if (value is BetterSanctumTrackerSettings.PrioritizeValue or BetterSanctumTrackerSettings.BlockValue ||
+            value >= BetterSanctumTrackerSettings.NeutralValue)
         {
             return value;
         }
@@ -1366,18 +1366,18 @@ public class BetterSanctumPlugin : BaseSettingsPlugin<BetterSanctumSettings>
     // Neither ever overrides an explicit 0 or 8 - those are your decisions, not context.
     private int AdjustRoomValue(int value, string roomTypeId, int floor)
     {
-        if (value is BetterSanctumSettings.PrioritizeValue or BetterSanctumSettings.BlockValue)
+        if (value is BetterSanctumTrackerSettings.PrioritizeValue or BetterSanctumTrackerSettings.BlockValue)
         {
             return value;
         }
 
         var runType = Settings.RunType;
-        if (runType == BetterSanctumSettings.RunTypeHourOfDivinity && roomTypeId == "BoonFountain" ||
-            runType == BetterSanctumSettings.RunTypeGildedChalice && roomTypeId == "Fountain")
+        if (runType == BetterSanctumTrackerSettings.RunTypeHourOfDivinity && roomTypeId == "BoonFountain" ||
+            runType == BetterSanctumTrackerSettings.RunTypeGildedChalice && roomTypeId == "Fountain")
         {
             // No boons to gain, or no resolve to recover: the room has nothing to offer.
             // CurseFountain is deliberately untouched - it stays bad on its own merits.
-            return BetterSanctumSettings.NeutralValue;
+            return BetterSanctumTrackerSettings.NeutralValue;
         }
 
         var bias = Settings.Routing.ContextBiasStrength.Value;
@@ -1390,7 +1390,7 @@ public class BetterSanctumPlugin : BaseSettingsPlugin<BetterSanctumSettings>
         // boons are buyable, which Hour of Divinity rules out.
         // Deals are handled separately, as flat points rather than a tier shift
         var favoured = floor is >= 1 and <= 2 &&
-                       runType != BetterSanctumSettings.RunTypeHourOfDivinity &&
+                       runType != BetterSanctumTrackerSettings.RunTypeHourOfDivinity &&
                        roomTypeId is "Treasure" or "Merchant";
 
         // Lower is better on this scale, and 1 is as good as a weight gets
@@ -1462,15 +1462,15 @@ public class BetterSanctumPlugin : BaseSettingsPlugin<BetterSanctumSettings>
     // those, fewest never-enters wins; only then does the weighted total decide.
     private static int CompareRoutes(int[] a, int[] b)
     {
-        var mustTake = ConstraintCount(a, BetterSanctumSettings.PrioritizeValue)
-            .CompareTo(ConstraintCount(b, BetterSanctumSettings.PrioritizeValue));
+        var mustTake = ConstraintCount(a, BetterSanctumTrackerSettings.PrioritizeValue)
+            .CompareTo(ConstraintCount(b, BetterSanctumTrackerSettings.PrioritizeValue));
         if (mustTake != 0)
         {
             return mustTake;
         }
 
-        var neverEnter = ConstraintCount(b, BetterSanctumSettings.BlockValue)
-            .CompareTo(ConstraintCount(a, BetterSanctumSettings.BlockValue));
+        var neverEnter = ConstraintCount(b, BetterSanctumTrackerSettings.BlockValue)
+            .CompareTo(ConstraintCount(a, BetterSanctumTrackerSettings.BlockValue));
         if (neverEnter != 0)
         {
             return neverEnter;
@@ -1507,7 +1507,7 @@ public class BetterSanctumPlugin : BaseSettingsPlugin<BetterSanctumSettings>
 
         try
         {
-            var quantity = BetterSanctumSettings.GetRewardQuantity(reward.CurrencyName, order, floor);
+            var quantity = BetterSanctumTrackerSettings.GetRewardQuantity(reward.CurrencyName, order, floor);
             var chaos = lookup(reward.BaseType) * quantity;
             if (chaos <= 0)
             {
@@ -1543,14 +1543,14 @@ public class BetterSanctumPlugin : BaseSettingsPlugin<BetterSanctumSettings>
         {
             var assignedValue = Settings.GetCurrencyTier(reward.CurrencyName, order);
             var value = AdjustCurrencyValue(assignedValue, floor);
-            if (value == BetterSanctumSettings.PrioritizeValue)
+            if (value == BetterSanctumTrackerSettings.PrioritizeValue)
             {
-                counts[Slot(AxisReward, BetterSanctumSettings.PrioritizeValue)]++;
+                counts[Slot(AxisReward, BetterSanctumTrackerSettings.PrioritizeValue)]++;
                 continue;
             }
 
             // A currency you never want is a reason to skip the offer, not the room
-            if (value == BetterSanctumSettings.BlockValue)
+            if (value == BetterSanctumTrackerSettings.BlockValue)
             {
                 continue;
             }

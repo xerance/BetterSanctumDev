@@ -15,9 +15,18 @@ with its history, kept as a separate repository so the HUD can install it indepe
 and the original stays untouched and working. Once the tracker is proven, it merges back
 there as an ordinary merge rather than a hand port.
 
-**Do not enable both plugins at once.** They draw the same overlay, so you would get
-every frame and every line twice. Logs are separate - this one writes to
-`Logs/BetterSanctumTracker/` - so the two do not fight over files.
+The plugin class is named `BetterSanctumTrackerPlugin` rather than `BetterSanctumPlugin`,
+and that is what keeps the two apart in the HUD. It identifies a plugin by its class name
+and not by its folder or its assembly, so while they shared a class name they shared one
+menu entry and one settings file, `config/global/BetterSanctum_settings.json` - and this
+plugin's own settings were invisible behind the other one's. Settings now live in
+`BetterSanctumTracker_settings.json` and logs in `Logs/BetterSanctumTracker/`.
+
+Copy your old settings file over that name to keep your tiers and profiles; otherwise this
+starts from the defaults.
+
+**Do not enable both plugins at once.** They draw the same overlay, so you would get every
+frame and every line twice.
 
 ## Credit
 

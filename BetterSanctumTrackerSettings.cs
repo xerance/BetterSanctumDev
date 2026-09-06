@@ -12,7 +12,7 @@ using Color = SharpDX.Color;
 
 namespace BetterSanctum;
 
-public class BetterSanctumSettings : ISettings
+public class BetterSanctumTrackerSettings : ISettings
 {
     private static readonly IReadOnlyList<string> CurrencyTypes = new List<string>
     {
@@ -146,7 +146,7 @@ public class BetterSanctumSettings : ISettings
         ("Deceptive Mirror", "You are not always taken to the room you select"),
     };
 
-    public BetterSanctumSettings()
+    public BetterSanctumTrackerSettings()
     {
         var currencyFilter = "";
         var roomFilter = "";
@@ -734,24 +734,24 @@ public class ProfileContent
     // current by CreateNew.
     public int ScaleVersion = 1;
 
-    public int RunType = BetterSanctumSettings.RunTypeNormal;
+    public int RunType = BetterSanctumTrackerSettings.RunTypeNormal;
 
     // Superseded by RunType. Read once by MigrateProfile, unused after.
     public bool DuplicateRun = false;
     public int HideCurrencyBelowTier = 3;
 
     [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
-    public Dictionary<string, int> CurrencyTiers = new(BetterSanctumSettings.DefaultCurrencyTiers);
+    public Dictionary<string, int> CurrencyTiers = new(BetterSanctumTrackerSettings.DefaultCurrencyTiers);
 
     [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
-    public Dictionary<string, int> RoomTiers = new(BetterSanctumSettings.DefaultRoomTiers);
+    public Dictionary<string, int> RoomTiers = new(BetterSanctumTrackerSettings.DefaultRoomTiers);
 
     [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
-    public Dictionary<string, int> AfflictionTiers = new(BetterSanctumSettings.DefaultAfflictionTiers);
+    public Dictionary<string, int> AfflictionTiers = new(BetterSanctumTrackerSettings.DefaultAfflictionTiers);
 
     public static ProfileContent CreateNew()
     {
-        return new ProfileContent { ScaleVersion = BetterSanctumSettings.CurrentScaleVersion };
+        return new ProfileContent { ScaleVersion = BetterSanctumTrackerSettings.CurrentScaleVersion };
     }
 }
 
