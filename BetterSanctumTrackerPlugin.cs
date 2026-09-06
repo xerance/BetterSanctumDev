@@ -88,7 +88,7 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
             _probe.LogAreaChange(area, GameController?.IngameState?.IngameUi?.SanctumFloorWindow);
         }
 
-        if (Settings.RunTracking.Enable && IsForbiddenSanctumHub(area?.Area?.Id))
+        if (Settings.RunTracking.TrackRuns && IsForbiddenSanctumHub(area?.Area?.Id))
         {
             _runTracker.NoteHubVisit();
         }
@@ -632,7 +632,7 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
     // else on screen is competing for attention.
     private void DrawRunTrackerWindow()
     {
-        if (!Settings.RunTracking.Enable || !IsForbiddenSanctumHub(GameController?.Area?.CurrentArea?.Area?.Id))
+        if (!Settings.RunTracking.TrackRuns || !IsForbiddenSanctumHub(GameController?.Area?.CurrentArea?.Area?.Id))
         {
             return;
         }
@@ -793,7 +793,7 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
         // Only while the map is open. The probe showed FloorData resolving to a stale
         // struct otherwise - zero gold and resolve just after a zone change, and outright
         // garbage in the hub - so a read taken with the map shut is not worth merging.
-        if (Settings.RunTracking.Enable && _runTracker.IsRunning)
+        if (Settings.RunTracking.TrackRuns && _runTracker.IsRunning)
         {
             _runTracker.Merge(CaptureFloor(floorWindow, roomsByLayer));
         }

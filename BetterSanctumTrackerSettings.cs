@@ -891,7 +891,7 @@ public class RunTrackingSettings
         "Start and End sit in a window that appears while you are in the Forbidden Sanctum hub. An unfinished run is kept in run-state.json, so restarting the HUD part way through does not lose it.",
         "What a run produced is worked out from the rooms you entered, assuming you took the most valuable slot in each. Nothing reads what you actually clicked, so treat the haul as an estimate - and an optimistic one, since the best slot is usually the end-of-Sanctum deferral, which pays nothing if the run ends early.");
 
-    public ToggleNode Enable { get; set; } = new ToggleNode(false);
+    public ToggleNode TrackRuns { get; set; } = new ToggleNode(false);
 }
 
 [Submenu(CollapsedByDefault = true)]
