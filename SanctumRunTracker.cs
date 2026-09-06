@@ -299,11 +299,32 @@ public class SanctumRunTracker
         return -((slot.Tier + 1) * 1000.0) + slot.Quantity;
     }
 
+    // The map's slots where it has them, the reward window's where it does not. A Deal
+    // reads its rewards as empty on the map, so without this the one room whose contents
+    // only the window can see would contribute nothing to what the run produced.
+    private static List<SlotObservation> TakeableSlots(RoomObservation room)
+    {
+        if (room.Slots.Count > 0)
+        {
+            return room.Slots;
+        }
+
+        return room.Offers
+            .Select(offer => new SlotObservation
+            {
+                Slot = offer.Slot,
+                Currency = offer.Currency,
+                Quantity = offer.Quantity,
+                Tier = offer.Tier,
+            })
+            .ToList();
+    }
+
     private static SlotObservation AssumedTake(RoomObservation room, Func<string, double> unitPrice)
     {
         SlotObservation best = null;
         var bestScore = double.MinValue;
-        foreach (var slot in room.Slots)
+        foreach (var slot in TakeableSlots(room))
         {
             if (string.IsNullOrEmpty(slot.Currency))
             {
@@ -383,7 +404,11 @@ public class SanctumRunTracker
                 foreach (var room in floor.Rooms.Values.OrderBy(x => x.Layer).ThenBy(x => x.Room))
                 {
                     var key = FloorObservation.Key(room.Layer, room.Room);
-                    var isEntered = entered.Contains(key);
+
+                    // Having read the reward window in a room is proof of having stood in
+                    // it, and better proof than the choice list: the map only opens before
+                    // a room is entered, so the last room of a floor never appears there.
+                    var isEntered = entered.Contains(key) || room.Offers.Count > 0;
                     var onRoute = route.Contains(key);
                     var assumed = isEntered ? AssumedTake(room, unitPrice) : null;
                     if (assumed != null)
@@ -447,7 +472,11 @@ public class SanctumRunTracker
                 // choice is never seen and a completed floor reads one short. Whether a
                 // floor was finished is therefore taken from a later floor existing, and
                 // is genuinely unknown for the last floor of the run.
-                var completed = floor.Floor < highestFloor
+                // Reading the reward window in the last layer settles it too, since the
+                // only way to see that window is to have been standing there.
+                var reachedLastLayer = floor.LayerCount > 0 &&
+                                       floor.Rooms.Values.Any(x => x.Layer == floor.LayerCount - 1 && x.Offers.Count > 0);
+                var completed = floor.Floor < highestFloor || reachedLastLayer
                     ? "1"
                     : floor.Choices.Count >= floor.LayerCount ? "1" : "unknown";
 
