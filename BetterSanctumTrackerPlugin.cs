@@ -284,9 +284,13 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
         return null;
     }
 
-    // A unit price only. Reward quantity is not exposed anywhere in room data, so this
-    // says what one of them is worth, not what the room pays out.
-    private string DescribeRewardPrice(SanctumDeferredRewardCategory reward, int assignedTier)
+    // What the room pays out, not what one of them is worth. The quantity is the measured
+    // figure for this currency in this slot - single-item rewards double in the last slot
+    // on floor 4 - which is the same number routing has always scored on, so the map now
+    // agrees with the route instead of showing a unit price beside it.
+    //
+    // Quantity is measured rather than read: nothing in room data exposes it.
+    private string DescribeRewardPrice(SanctumDeferredRewardCategory reward, int order, int assignedTier)
     {
         // Same gate as routing: a price on a tier you rated low is clutter, not information
         if (!Settings.MapDisplay.ShowRewardPrices || assignedTier > Settings.Routing.PriceMaxTier)
@@ -295,7 +299,19 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
         }
 
         var chaos = UnitPriceFor(reward);
-        return chaos > 0 ? $" ({FormatPrice(chaos)})" : "";
+        if (chaos <= 0)
+        {
+            return "";
+        }
+
+        var floor = BetterSanctumTrackerSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix);
+        var quantity = BetterSanctumTrackerSettings.GetRewardQuantity(reward?.CurrencyName, order, floor);
+
+        // The count is spelled out where it is not one, so a doubled last slot reads as a
+        // doubled reward rather than as a price that moved for no reason.
+        return quantity > 1
+            ? $" ({quantity}x {FormatPrice(chaos * quantity)})"
+            : $" ({FormatPrice(chaos)})";
     }
 
     // Returns the size whether or not it draws, so a suppressed line still advances the
@@ -1327,7 +1343,7 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
                         var tier = Settings.GetCurrencyTier(currencyName, reward.order);
                         if (tier <= Settings.HideCurrencyBelowTier)
                         {
-                            textSize = DrawTextWithBackground(currencyName + DescribeRewardPrice(reward.room, tier), lineLocation, GetTierColor(tier), Settings.MapDisplay.BackgroundColor);
+                            textSize = DrawTextWithBackground(currencyName + DescribeRewardPrice(reward.room, reward.order, tier), lineLocation, GetTierColor(tier), Settings.MapDisplay.BackgroundColor);
                             lineLocation.Y += textSize.Y;
                         }
                     }
