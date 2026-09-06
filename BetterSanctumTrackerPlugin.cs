@@ -44,6 +44,8 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
     private readonly Stopwatch _sincePriceLookupStopwatch = Stopwatch.StartNew();
     private double _divineChaosRate;
     private readonly Stopwatch _sinceDivineRateStopwatch = Stopwatch.StartNew();
+    private readonly Dictionary<string, double> _priceByCurrency = new Dictionary<string, double>();
+    private readonly Stopwatch _sincePriceCacheStopwatch = Stopwatch.StartNew();
 
     // Logs/BetterSanctumTracker under the HUD root. Not DirectoryFullName, which is not dependable
     // for source-compiled plugins, and not the shared Logs folder directly, which every
@@ -173,6 +175,65 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
         return chaos < 10 ? $"{chaos:0.#}c" : $"{chaos:0}c";
     }
 
+    // Priced by name through the game's own reward category table rather than off the
+    // BaseType hanging on the room's reward. The reward window has always priced correctly
+    // and takes its BaseType from that table; the floor map priced nothing at all and took
+    // its BaseType from room data. That was the only difference between them, and it left
+    // every reward on the map unpriced - which also flattened routing, since two tier-1
+    // rewards with no price between them tie exactly and the route falls to room types.
+    //
+    // Cached by currency name: this is called for every reward of every room every frame,
+    // and each miss costs a lookup across the whole table plus a bridge call.
+    private double UnitPriceForCurrency(string currencyName)
+    {
+        if (string.IsNullOrEmpty(currencyName))
+        {
+            return 0;
+        }
+
+        if (_sincePriceCacheStopwatch.Elapsed > TimeSpan.FromMinutes(1))
+        {
+            _priceByCurrency.Clear();
+            _sincePriceCacheStopwatch.Restart();
+        }
+
+        if (_priceByCurrency.TryGetValue(currencyName, out var cached))
+        {
+            return cached;
+        }
+
+        var lookup = ResolvePriceLookup();
+        var categories = RemoteMemoryObject.pTheGame?.Files?.SanctumDeferredRewardCategories?.EntriesList;
+        if (lookup == null || categories == null)
+        {
+            // Not cached: the bridge resolves late, so a miss now may succeed shortly
+            return 0;
+        }
+
+        double chaos = 0;
+        foreach (var category in categories)
+        {
+            if (category?.BaseType == null || category.CurrencyName != currencyName)
+            {
+                continue;
+            }
+
+            try
+            {
+                chaos = lookup(category.BaseType);
+            }
+            catch (Exception)
+            {
+                chaos = 0;
+            }
+
+            break;
+        }
+
+        _priceByCurrency[currencyName] = chaos;
+        return chaos;
+    }
+
     // A unit price only. Reward quantity is not exposed anywhere in room data, so this
     // says what one of them is worth, not what the room pays out.
     private string DescribeRewardPrice(SanctumDeferredRewardCategory reward, int assignedTier)
@@ -183,21 +244,8 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
             return "";
         }
 
-        var lookup = ResolvePriceLookup();
-        if (lookup == null || reward.BaseType == null)
-        {
-            return "";
-        }
-
-        try
-        {
-            var chaos = lookup(reward.BaseType);
-            return $" ({FormatPrice(chaos)})";
-        }
-        catch (Exception)
-        {
-            return "";
-        }
+        var chaos = UnitPriceForCurrency(reward?.CurrencyName);
+        return chaos > 0 ? $" ({FormatPrice(chaos)})" : "";
     }
 
     // Returns the size whether or not it draws, so a suppressed line still advances the
@@ -711,39 +759,9 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
 
     private Func<string, double> ResolveUnitPriceByName()
     {
-        var lookup = ResolvePriceLookup();
-        var categories = RemoteMemoryObject.pTheGame?.Files?.SanctumDeferredRewardCategories?.EntriesList;
-        if (lookup == null || categories == null)
-        {
-            return null;
-        }
-
-        return currencyName =>
-        {
-            if (string.IsNullOrEmpty(currencyName))
-            {
-                return 0;
-            }
-
-            foreach (var category in categories)
-            {
-                if (category?.BaseType == null || category.CurrencyName != currencyName)
-                {
-                    continue;
-                }
-
-                try
-                {
-                    return lookup(category.BaseType);
-                }
-                catch (Exception)
-                {
-                    return 0;
-                }
-            }
-
-            return 0;
-        };
+        // Null when there is no price source at all, which is what tells the tracker to
+        // fall back to your tiers rather than scoring every currency zero.
+        return ResolvePriceLookup() == null ? null : UnitPriceForCurrency;
     }
 
     // Shown in the hub only, which is where a run both starts and ends, and where nothing
@@ -1621,16 +1639,10 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
             return 0;
         }
 
-        var lookup = ResolvePriceLookup();
-        if (lookup == null || reward?.BaseType == null)
-        {
-            return 0;
-        }
-
         try
         {
-            var quantity = BetterSanctumTrackerSettings.GetRewardQuantity(reward.CurrencyName, order, floor);
-            var chaos = lookup(reward.BaseType) * quantity;
+            var quantity = BetterSanctumTrackerSettings.GetRewardQuantity(reward?.CurrencyName, order, floor);
+            var chaos = UnitPriceForCurrency(reward?.CurrencyName) * quantity;
             if (chaos <= 0)
             {
                 return 0;
