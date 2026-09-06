@@ -19,6 +19,20 @@ public class SlotObservation
     public int Tier { get; set; }
 }
 
+// One line of the reward window: "Receive 14x Orbs of Fusing at the end of the Floor".
+// The map carries Reward1/2/3 for an ordinary reward room, but a Deal reads all three as
+// null - its contents only exist once you are standing in it - so this is the only way to
+// see what a deal was worth. Captured for every room rather than only deals, since it also
+// puts the window's own quantities beside the measured ones.
+public class OfferObservation
+{
+    public int Slot { get; set; }
+    public string Text { get; set; }
+    public string Currency { get; set; }
+    public int Quantity { get; set; }
+    public int Tier { get; set; }
+}
+
 public class RoomObservation
 {
     public int Layer { get; set; }
@@ -32,6 +46,10 @@ public class RoomObservation
     public List<int> Connections { get; set; } = new List<int>();
 
     public List<SlotObservation> Slots { get; set; } = new List<SlotObservation>();
+
+    // What the reward window said while you stood in this room, which for a Deal is the
+    // only place its contents appear at all.
+    public List<OfferObservation> Offers { get; set; } = new List<OfferObservation>();
 
     public bool IsDeal => FightRoomId == "Deal" || RewardRoomId == "Deal";
 

@@ -591,6 +591,124 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
     // name, so this bridges the two through the game's own reward categories - the same
     // table the offer window pricing matches against. Null when Ninja Price is absent,
     // which makes the tracker fall back to the tiers you assigned.
+    // Offer text names the currency in either its singular or plural form - "Receive 1x
+    // Volatile Vaal Orb" against "Receive 10x Chaos Orbs" - so both are tried and the
+    // longest match wins, or a volatile vaal reads as a vaal. The same rule the offer
+    // window pricing already uses.
+    private static string MatchOfferCurrency(string text)
+    {
+        var categories = RemoteMemoryObject.pTheGame?.Files?.SanctumDeferredRewardCategories?.EntriesList;
+        if (categories == null || string.IsNullOrWhiteSpace(text))
+        {
+            return null;
+        }
+
+        string matched = null;
+        var matchedLength = 0;
+        foreach (var category in categories)
+        {
+            if (category?.BaseType == null)
+            {
+                continue;
+            }
+
+            foreach (var name in new[] { category.BaseType.BaseName, category.CurrencyName })
+            {
+                if (string.IsNullOrEmpty(name) ||
+                    name.Length <= matchedLength ||
+                    !text.Contains(name, StringComparison.InvariantCultureIgnoreCase))
+                {
+                    continue;
+                }
+
+                matched = category.CurrencyName;
+                matchedLength = name.Length;
+            }
+        }
+
+        return matched;
+    }
+
+    // A Deal reads Reward1/2/3 as null on the map - its contents only exist once you are
+    // standing in it - so the reward window is the only place a deal can be read at all.
+    // Captured for every room rather than only deals, since it also puts the window's own
+    // quantities beside the measured ones.
+    //
+    // Attributed to the room you are in, which the map cannot say because the map is shut
+    // while this window is up. RoomChoices records the room index taken in each completed
+    // layer, so its last entry is where you are standing. Read behind a sanity check: just
+    // after a zone change FloorData resolves to a stale struct reading zero gold and zero
+    // resolve, and a choice list taken from that means nothing.
+    private void CaptureRoomOffers()
+    {
+        if (!Settings.RunTracking.TrackRuns || !_runTracker.IsRunning)
+        {
+            return;
+        }
+
+        var offerWindow = GetOfferWindow();
+        if (offerWindow == null)
+        {
+            return;
+        }
+
+        var floor = BetterSanctumTrackerSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix);
+        if (floor <= 0)
+        {
+            return;
+        }
+
+        try
+        {
+            var floorData = GameController?.IngameState?.IngameUi?.SanctumFloorWindow?.FloorData;
+            if (floorData == null || floorData.MaxResolve <= 0)
+            {
+                return;
+            }
+
+            var choices = floorData.RoomChoices is IEnumerable rawChoices
+                ? rawChoices.Cast<object>().Select(Convert.ToInt32).ToList()
+                : new List<int>();
+            if (choices.Count == 0)
+            {
+                return;
+            }
+
+            var offers = new List<OfferObservation>();
+            foreach (var offer in offerWindow.Children)
+            {
+                var text = offer.Children.Count > 1 ? offer.Children[1].Text : null;
+                if (string.IsNullOrWhiteSpace(text) || offer.IndexInParent is not { } slot)
+                {
+                    continue;
+                }
+
+                var currency = MatchOfferCurrency(text);
+                var quantity = 1;
+                var match = Regex.Match(text, @"\b(\d+)\s*x\b", RegexOptions.IgnoreCase);
+                if (match.Success && int.TryParse(match.Groups[1].Value, out var parsed) && parsed > 0)
+                {
+                    quantity = parsed;
+                }
+
+                offers.Add(new OfferObservation
+                {
+                    Slot = slot,
+                    Text = text.Trim(),
+                    Currency = currency,
+                    Quantity = quantity,
+                    Tier = Settings.GetCurrencyTier(currency, slot),
+                });
+            }
+
+            _runTracker.NoteOffers(floor, _lastKnownFloorPrefix, choices.Count - 1, choices[^1], offers);
+        }
+        catch (Exception e)
+        {
+            LogError($"[BetterSanctumTracker] could not read the reward window: {e.Message}", 10);
+        }
+    }
+
     private Func<string, double> ResolveUnitPriceByName()
     {
         var lookup = ResolvePriceLookup();
@@ -695,6 +813,10 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
         }
 
         DrawRunTrackerWindow();
+
+        // Ahead of the floor-map gate below, since this is read while the map is shut and
+        // you are standing in the room
+        CaptureRoomOffers();
 
         if (Settings.DuplicateRun)
         {

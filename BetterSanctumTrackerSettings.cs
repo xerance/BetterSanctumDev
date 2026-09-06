@@ -887,7 +887,8 @@ public class RunTrackingSettings
 {
     [JsonIgnore]
     public CustomNode Help { get; set; } = SettingsHelp.Block(
-        "Records one run at a time and writes it to Logs/BetterSanctumTracker/ on End Run: sanctum-runs.csv holds a row per floor, sanctum-run-rooms.csv a row per reward slot.",
+        "Records one run at a time and writes it to Logs/BetterSanctumTracker/ on End Run: sanctum-runs.csv holds a row per floor, sanctum-run-rooms.csv a row per room and reward slot.",
+        "Rows are marked map or window. Map is what the floor map showed. Window is what the reward window said while you stood in the room, which for a Deal room is the only place its rewards appear at all - the map reads them as empty.",
         "Start and End sit in a window that appears while you are in the Forbidden Sanctum hub. An unfinished run is kept in run-state.json, so restarting the HUD part way through does not lose it.",
         "What a run produced is worked out from the rooms you entered, assuming you took the most valuable slot in each. Nothing reads what you actually clicked, so treat the haul as an estimate - and an optimistic one, since the best slot is usually the end-of-Sanctum deferral, which pays nothing if the run ends early.");
 

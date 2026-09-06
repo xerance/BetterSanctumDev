@@ -19,15 +19,18 @@ public class SanctumRunTracker
     private const string RunHeader =
         "when;runId;started;ended;floor;prefix;layers;roomsSeen;rewardRooms;layersEntered;floorCompleted;" +
         "rewardsObscured;roomTypesObscured;afflictionsObscured;afflictionsTaken;" +
-        "tier01Visible;tier01Collectable;tier01Skipped;dealRooms;assumedHaul;assumedValue;valueBasis;" +
-        "hubVisits;extraHubVisits";
+        "tier01Visible;tier01Collectable;tier01Skipped;dealRooms;dealRoomsEntered;dealOffersSeen;" +
+        "assumedHaul;assumedValue;valueBasis;hubVisits;extraHubVisits";
 
     // A row per room now, not per reward slot: a room with no rewards - a deal, a fountain,
     // the boss - carried none and so appeared nowhere, which made the room-type columns
     // impossible to count against and left roomsSeen unexplainable.
+    // source says where the row came from: "map" is what the floor map showed, "window" is
+    // what the reward window said while you stood in the room. A Deal only ever produces
+    // the second, since the map reads its rewards as null.
     private const string RoomHeader =
-        "when;runId;floor;layer;room;slot;currency;quantity;tier;fightRoom;rewardRoom;roomAffliction;" +
-        "entered;onTier01Route;assumedTake;slotValue";
+        "when;runId;floor;layer;room;source;slot;currency;quantity;tier;fightRoom;rewardRoom;roomAffliction;" +
+        "entered;onTier01Route;assumedTake;slotValue;offerText";
 
     private readonly string _runPath;
     private readonly string _roomPath;
@@ -123,6 +126,49 @@ public class SanctumRunTracker
             if (room.Slots.Count > existing.Slots.Count)
             {
                 existing.Slots = room.Slots;
+            }
+        }
+
+        Save(force: false);
+    }
+
+    // Recorded against the room you are standing in rather than a room on the map, since
+    // the map is shut while the reward window is open. Merged by slot: the window is read
+    // every frame it is up, and the same three lines arrive over and over.
+    public void NoteOffers(int floor, string prefix, int layer, int room, List<OfferObservation> offers)
+    {
+        if (!IsRunning || floor <= 0 || offers == null || offers.Count == 0)
+        {
+            return;
+        }
+
+        var floorState = Current.Floor(floor, prefix);
+        var key = FloorObservation.Key(layer, room);
+        if (!floorState.Rooms.TryGetValue(key, out var observation))
+        {
+            // A room can be stood in before it was ever seen on the map, so the offer
+            // creates the room rather than being dropped for want of one.
+            observation = new RoomObservation { Layer = layer, Room = room };
+            floorState.Rooms[key] = observation;
+        }
+
+        foreach (var offer in offers)
+        {
+            var existing = observation.Offers.FirstOrDefault(x => x.Slot == offer.Slot);
+            if (existing == null)
+            {
+                observation.Offers.Add(offer);
+                continue;
+            }
+
+            // A later read only wins where it actually says more: the window can be caught
+            // part drawn, with the text not yet filled in.
+            if (!string.IsNullOrWhiteSpace(offer.Text) && offer.Text.Length > (existing.Text?.Length ?? 0))
+            {
+                existing.Text = offer.Text;
+                existing.Currency = offer.Currency;
+                existing.Quantity = offer.Quantity;
+                existing.Tier = offer.Tier;
             }
         }
 
@@ -341,24 +387,42 @@ public class SanctumRunTracker
 
                     // A room with no rewards still gets a row, so deals, fountains and
                     // bosses can be counted rather than vanishing from the file.
-                    if (room.Slots.Count == 0)
+                    if (room.Slots.Count == 0 && room.Offers.Count == 0)
                     {
                         roomRows.Add(Row(
-                            run.RunId, floor.Floor, room.Layer, room.Room, null,
+                            run.RunId, floor.Floor, room.Layer, room.Room, "map", null,
                             null, null, null,
                             room.FightRoomId, room.RewardRoomId, room.Affliction,
-                            isEntered, onRoute, false, null));
+                            isEntered, onRoute, false, null, null));
                         continue;
                     }
 
                     foreach (var slot in room.Slots.OrderBy(x => x.Slot))
                     {
                         roomRows.Add(Row(
-                            run.RunId, floor.Floor, room.Layer, room.Room, slot.Slot,
+                            run.RunId, floor.Floor, room.Layer, room.Room, "map", slot.Slot,
                             slot.Currency, slot.Quantity, slot.Tier,
                             room.FightRoomId, room.RewardRoomId, room.Affliction,
                             isEntered, onRoute, assumed != null && assumed.Slot == slot.Slot,
-                            Math.Round(SlotValue(slot, unitPrice), 2)));
+                            Math.Round(SlotValue(slot, unitPrice), 2), null));
+                    }
+
+                    // Window rows sit alongside the map rows rather than replacing them,
+                    // so where both exist the two readings can be compared.
+                    foreach (var offer in room.Offers.OrderBy(x => x.Slot))
+                    {
+                        roomRows.Add(Row(
+                            run.RunId, floor.Floor, room.Layer, room.Room, "window", offer.Slot,
+                            offer.Currency, offer.Quantity, offer.Tier,
+                            room.FightRoomId, room.RewardRoomId, room.Affliction,
+                            isEntered, onRoute, false,
+                            Math.Round(SlotValue(new SlotObservation
+                            {
+                                Currency = offer.Currency,
+                                Quantity = offer.Quantity,
+                                Tier = offer.Tier,
+                            }, unitPrice), 2),
+                            offer.Text));
                     }
                 }
 
@@ -370,7 +434,12 @@ public class SanctumRunTracker
                     ? "1"
                     : floor.Choices.Count >= floor.LayerCount ? "1" : "unknown";
 
-                var dealRooms = floor.Rooms.Values.Count(x => x.IsDeal);
+                // Entered and seen are reported separately because a deal only reveals
+                // itself from the inside: an unentered deal can never have offers, so a
+                // gap between these two is what says the window read is failing.
+                var deals = floor.Rooms.Values.Where(x => x.IsDeal).ToList();
+                var dealsEntered = deals.Count(x => entered.Contains(FloorObservation.Key(x.Layer, x.Room)));
+                var dealsWithOffers = deals.Count(x => x.Offers.Count > 0);
                 runRows.Add(Row(
                     run.RunId, run.Started.ToString("s"), run.Ended?.ToString("s"),
                     floor.Floor, floor.Prefix, floor.LayerCount,
@@ -381,7 +450,7 @@ public class SanctumRunTracker
                     floor.AfflictionsObscured || afflictionsTaken.Contains("Purple Smoke"),
                     string.Join(", ", afflictionsTaken.OrderBy(x => x, StringComparer.Ordinal)),
                     visible, collectable, Math.Max(visible - collectable, 0),
-                    dealRooms,
+                    deals.Count, dealsEntered, dealsWithOffers,
                     DescribeHaul(taken),
                     pricedAny ? Math.Round(takenValue, 2) : (object)null,
                     unitPrice == null ? "tier" : pricedAny ? "chaos" : "tier",
