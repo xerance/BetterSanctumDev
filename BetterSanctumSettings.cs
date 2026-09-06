@@ -886,9 +886,9 @@ public class DebugSettings
 {
     [JsonIgnore]
     public CustomNode Help { get; set; } = SettingsHelp.Block(
-        "Writes Logs/BetterSanctum/room-dump.txt once each time the floor map is opened, listing the raw data behind every room.",
-        "Track rewards appends every distinct reward seen to Logs/BetterSanctum/sanctum-rewards.csv: what the map offers and where, the room tooltip, and the reward window text. Leave it on across runs and the table fills in.",
-        "Probe sanctum state appends to Logs/BetterSanctum/sanctum-probe.txt: every area you enter, and the floor data - gold, resolve, room choices and accrued rewards - each time it changes. Turn it on for one full run, from the Forbidden Sanctum through all four floors and back out, then read the file.");
+        "Writes Logs/BetterSanctumTracker/room-dump.txt once each time the floor map is opened, listing the raw data behind every room.",
+        "Track rewards appends every distinct reward seen to Logs/BetterSanctumTracker/sanctum-rewards.csv: what the map offers and where, the room tooltip, and the reward window text. Leave it on across runs and the table fills in.",
+        "Probe sanctum state appends to Logs/BetterSanctumTracker/sanctum-probe.txt: every area you enter, and the floor data - gold, resolve, room choices and accrued rewards - each time it changes. Turn it on for one full run, from the Forbidden Sanctum through all four floors and back out, then read the file.");
 
     public ToggleNode DebugDumpRoomData { get; set; } = new ToggleNode(false);
     public ToggleNode TrackRewards { get; set; } = new ToggleNode(false);

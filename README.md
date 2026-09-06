@@ -1,10 +1,23 @@
-# BetterSanctum
+# BetterSanctumTracker
 
-A Sanctum overlay for [ExileApi](https://github.com/exApiTools/ExileApi-Compiled).
+A Sanctum overlay for [ExileApi](https://github.com/exApiTools/ExileApi-Compiled), with a
+per-run statistics tracker.
 
 Rates every room on the floor map from tier values you set, frames the best route from
 where you stand to the boss, and marks guard spawners and hazards in the room you are
-fighting in.
+fighting in. On top of that it records what each run actually produced and writes it to
+CSV.
+
+## Relationship to BetterSanctum
+
+This is a full copy of [xerance/BetterSanctum](https://github.com/xerance/BetterSanctum)
+with its history, kept as a separate repository so the HUD can install it independently
+and the original stays untouched and working. Once the tracker is proven, it merges back
+there as an ordinary merge rather than a hand port.
+
+**Do not enable both plugins at once.** They draw the same overlay, so you would get
+every frame and every line twice. Logs are separate - this one writes to
+`Logs/BetterSanctumTracker/` - so the two do not fight over files.
 
 ## Credit
 
@@ -81,5 +94,5 @@ Routing adjusts for the run:
 
 ## Building
 
-Put the source in `Plugins/Source/BetterSanctum` and launch the HUD, which compiles it.
-Debug output goes to `Logs/BetterSanctum/` in the HUD root.
+Put the source in `Plugins/Source/BetterSanctumTracker` and launch the HUD, which compiles it.
+Debug output goes to `Logs/BetterSanctumTracker/` in the HUD root.

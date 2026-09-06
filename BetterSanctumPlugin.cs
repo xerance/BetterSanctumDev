@@ -42,12 +42,12 @@ public class BetterSanctumPlugin : BaseSettingsPlugin<BetterSanctumSettings>
     private double _divineChaosRate;
     private readonly Stopwatch _sinceDivineRateStopwatch = Stopwatch.StartNew();
 
-    // Logs/BetterSanctum under the HUD root. Not DirectoryFullName, which is not dependable
+    // Logs/BetterSanctumTracker under the HUD root. Not DirectoryFullName, which is not dependable
     // for source-compiled plugins, and not the shared Logs folder directly, which every
     // other plugin writes into too.
     private static string LogFilePath(string fileName)
     {
-        var directory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs", "BetterSanctum");
+        var directory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs", "BetterSanctumTracker");
         try
         {
             Directory.CreateDirectory(directory);
