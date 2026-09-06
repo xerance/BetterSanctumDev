@@ -709,6 +709,7 @@ public class BetterSanctumSettings : ISettings
     public MapDisplaySettings MapDisplay { get; set; } = new MapDisplaySettings();
     public TierColorSettings TierColors { get; set; } = new TierColorSettings();
     public InRoomSettings InRoom { get; set; } = new InRoomSettings();
+    public RunTrackingSettings RunTracking { get; set; } = new RunTrackingSettings();
     public DebugSettings Debug { get; set; } = new DebugSettings();
 
     // Replace, or the shipped Default is merged back into a saved set every load and
@@ -879,6 +880,18 @@ public class InRoomSettings
     public ColorNode ActiveSpawnerColor { get; set; } = new(Color.Lime);
     public ColorNode DormantSpawnerColor { get; set; } = new(Color.LightBlue);
     public ColorNode HazardColor { get; set; } = new(Color.Red);
+}
+
+[Submenu(CollapsedByDefault = true)]
+public class RunTrackingSettings
+{
+    [JsonIgnore]
+    public CustomNode Help { get; set; } = SettingsHelp.Block(
+        "Records one run at a time and writes it to Logs/BetterSanctumTracker/ on End Run: sanctum-runs.csv holds a row per floor, sanctum-run-rooms.csv a row per reward slot.",
+        "Start and End sit in a window that appears while you are in the Forbidden Sanctum hub. An unfinished run is kept in run-state.json, so restarting the HUD part way through does not lose it.",
+        "What a run produced is worked out from the rooms you entered, assuming you took the most valuable slot in each. Nothing reads what you actually clicked, so treat the haul as an estimate - and an optimistic one, since the best slot is usually the end-of-Sanctum deferral, which pays nothing if the run ends early.");
+
+    public ToggleNode Enable { get; set; } = new ToggleNode(false);
 }
 
 [Submenu(CollapsedByDefault = true)]

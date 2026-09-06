@@ -39,6 +39,7 @@ public class BetterSanctumPlugin : BaseSettingsPlugin<BetterSanctumSettings>
     private RewardTracker _rewardTracker;
     private SanctumProbe _probe;
     private string _lastBuffProbeArea;
+    private SanctumRunTracker _runTracker;
     private Func<BaseItemType, double> _currencyPrice;
     private readonly Stopwatch _sincePriceLookupStopwatch = Stopwatch.StartNew();
     private double _divineChaosRate;
@@ -68,6 +69,12 @@ public class BetterSanctumPlugin : BaseSettingsPlugin<BetterSanctumSettings>
         _effectHelper = new EffectHelper(GameController, Graphics, Settings);
         _rewardTracker = new RewardTracker(LogFilePath("sanctum-rewards.csv"));
         _probe = new SanctumProbe(LogFilePath("sanctum-probe.txt"));
+        _runTracker = new SanctumRunTracker(
+            LogFilePath("sanctum-runs.csv"),
+            LogFilePath("sanctum-run-rooms.csv"),
+            LogFilePath("run-state.json"));
+        // Picks a run back up after a HUD restart part way through one
+        _runTracker.Load();
         return base.Initialise();
     }
 
@@ -79,6 +86,11 @@ public class BetterSanctumPlugin : BaseSettingsPlugin<BetterSanctumSettings>
         if (Settings.Debug.ProbeSanctumState)
         {
             _probe.LogAreaChange(area, GameController?.IngameState?.IngameUi?.SanctumFloorWindow);
+        }
+
+        if (Settings.RunTracking.Enable && IsForbiddenSanctumHub(area?.Area?.Id))
+        {
+            _runTracker.NoteHubVisit();
         }
 
         base.AreaChange(area);
@@ -488,6 +500,189 @@ public class BetterSanctumPlugin : BaseSettingsPlugin<BetterSanctumSettings>
         }
     }
 
+    // The hub and the floor entrances are all SanctumFoyer areas; only the suffix tells
+    // them apart. The floor ones are numbered - SanctumFoyer_3_3 is the way in to floor 3
+    // - while the hub takes the name of the map it was opened from, SanctumFoyer_Fellshrine
+    // among them. Keying on the shape rather than on that name is what stops this breaking
+    // in the next map, and on a client in another language.
+    private static bool IsForbiddenSanctumHub(string areaId)
+    {
+        return areaId != null &&
+               areaId.StartsWith("SanctumFoyer_", StringComparison.Ordinal) &&
+               !Regex.IsMatch(areaId, @"^SanctumFoyer_\d+_\d+$");
+    }
+
+    // Everything the tracker needs off one map opening. Partial by nature - rooms reveal a
+    // few layers ahead - so this is a sighting to be merged, never the floor itself.
+    private FloorObservation CaptureFloor(SanctumFloorWindow floorWindow, List<List<SanctumRoomElement>> roomsByLayer)
+    {
+        var floor = new FloorObservation
+        {
+            Floor = BetterSanctumSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix),
+            Prefix = _lastKnownFloorPrefix,
+            LayerCount = roomsByLayer.Count,
+        };
+
+        if (floor.Floor <= 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            if (floorWindow.FloorData?.RoomChoices is IEnumerable rawChoices)
+            {
+                floor.Choices = rawChoices.Cast<object>().Select(Convert.ToInt32).ToList();
+            }
+        }
+        catch (Exception)
+        {
+            // A floor with no choices yet reads as empty, which is also the honest answer
+        }
+
+        for (var layerIndex = 0; layerIndex < roomsByLayer.Count; layerIndex++)
+        {
+            var roomLayer = roomsByLayer[layerIndex];
+            for (var roomIndex = 0; roomIndex < roomLayer.Count; roomIndex++)
+            {
+                var room = roomLayer[roomIndex];
+                var observation = new RoomObservation
+                {
+                    Layer = layerIndex,
+                    Room = roomIndex,
+                    FightRoomId = room.Data?.FightRoom?.RoomType?.Id,
+                    RewardRoomId = room.Data?.RewardRoom?.RoomType?.Id,
+                    Affliction = room.Data?.RoomEffect?.ReadableName,
+                };
+
+                try
+                {
+                    var connections = floorWindow.FloorData?.RoomLayout;
+                    if (connections != null && layerIndex < connections.Length && roomIndex < connections[layerIndex].Length)
+                    {
+                        observation.Connections = connections[layerIndex][roomIndex].Select(x => (int)x).ToList();
+                    }
+                }
+                catch (Exception)
+                {
+                    // An unrevealed room has no layout yet; the route solve treats an
+                    // empty connection list as "anything onward" rather than a dead end.
+                }
+
+                foreach (var (reward, order) in room.GetRoomsWithOrder())
+                {
+                    observation.Slots.Add(new SlotObservation
+                    {
+                        Slot = order,
+                        Currency = reward.CurrencyName,
+                        Quantity = BetterSanctumSettings.GetRewardQuantity(reward.CurrencyName, order, floor.Floor),
+                        Tier = Settings.GetCurrencyTier(reward.CurrencyName, order),
+                    });
+                }
+
+                floor.Rooms[FloorObservation.Key(layerIndex, roomIndex)] = observation;
+            }
+        }
+
+        return floor;
+    }
+
+    // The price lookup is by base item type, and the tracker only ever holds a currency
+    // name, so this bridges the two through the game's own reward categories - the same
+    // table the offer window pricing matches against. Null when Ninja Price is absent,
+    // which makes the tracker fall back to the tiers you assigned.
+    private Func<string, double> ResolveUnitPriceByName()
+    {
+        var lookup = ResolvePriceLookup();
+        var categories = RemoteMemoryObject.pTheGame?.Files?.SanctumDeferredRewardCategories?.EntriesList;
+        if (lookup == null || categories == null)
+        {
+            return null;
+        }
+
+        return currencyName =>
+        {
+            if (string.IsNullOrEmpty(currencyName))
+            {
+                return 0;
+            }
+
+            foreach (var category in categories)
+            {
+                if (category?.BaseType == null || category.CurrencyName != currencyName)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    return lookup(category.BaseType);
+                }
+                catch (Exception)
+                {
+                    return 0;
+                }
+            }
+
+            return 0;
+        };
+    }
+
+    // Shown in the hub only, which is where a run both starts and ends, and where nothing
+    // else on screen is competing for attention.
+    private void DrawRunTrackerWindow()
+    {
+        if (!Settings.RunTracking.Enable || !IsForbiddenSanctumHub(GameController?.Area?.CurrentArea?.Area?.Id))
+        {
+            return;
+        }
+
+        ImGui.Begin("Sanctum Run Tracker");
+        if (_runTracker.IsRunning)
+        {
+            var run = _runTracker.Current;
+            ImGui.Text($"Run {run.RunId}");
+            ImGui.Text($"Started {run.Started:HH:mm:ss}, {(DateTime.Now - run.Started).TotalMinutes:0} min");
+            ImGui.Text($"Floors seen: {string.Join(", ", run.Floors.Keys.OrderBy(x => x))}");
+            ImGui.Text($"Rooms recorded: {run.Floors.Values.Sum(x => x.Rooms.Count)}");
+            ImGui.Text($"Hub visits: {run.HubVisits}");
+
+            if (ImGui.Button("End Run (write CSV)"))
+            {
+                var floors = _runTracker.EndRun(ResolveUnitPriceByName());
+                if (floors < 0)
+                {
+                    LogError($"[BetterSanctum] could not write the run: {_runTracker.LastError}", 30);
+                }
+                else
+                {
+                    LogMessage($"[BetterSanctum] wrote {floors} floor rows to sanctum-runs.csv", 30);
+                }
+            }
+
+            ImGui.SameLine();
+            if (ImGui.Button("Discard"))
+            {
+                _runTracker.AbandonRun();
+            }
+        }
+        else
+        {
+            ImGui.Text("No run in progress.");
+            if (ImGui.Button("Start Run"))
+            {
+                _runTracker.StartRun();
+            }
+        }
+
+        if (_runTracker.LastError is { Length: > 0 } error)
+        {
+            ImGui.TextColored(new System.Numerics.Vector4(1, 0.4f, 0.4f, 1), error);
+        }
+
+        ImGui.End();
+    }
+
     public override void Render()
     {
         // Ahead of every early return below, since the point of the probe is the state
@@ -498,6 +693,8 @@ public class BetterSanctumPlugin : BaseSettingsPlugin<BetterSanctumSettings>
                 GameController?.Area?.CurrentArea?.Area?.RawName);
             ProbeBuffs();
         }
+
+        DrawRunTrackerWindow();
 
         if (Settings.DuplicateRun)
         {
@@ -591,6 +788,14 @@ public class BetterSanctumPlugin : BaseSettingsPlugin<BetterSanctumSettings>
                     }
                 }
             }
+        }
+
+        // Only while the map is open. The probe showed FloorData resolving to a stale
+        // struct otherwise - zero gold and resolve just after a zone change, and outright
+        // garbage in the hub - so a read taken with the map shut is not worth merging.
+        if (Settings.RunTracking.Enable && _runTracker.IsRunning)
+        {
+            _runTracker.Merge(CaptureFloor(floorWindow, roomsByLayer));
         }
 
         if (Settings.Debug.DebugDumpRoomData && _debugDumpPending)
