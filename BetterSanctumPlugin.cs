@@ -7,6 +7,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using ExileCore;
 using ExileCore.PoEMemory;
+using ExileCore.PoEMemory.Components;
 using ExileCore.PoEMemory.Elements.Sanctum;
 using ExileCore.PoEMemory.FilesInMemory.Sanctum;
 using ExileCore.PoEMemory.MemoryObjects;
@@ -37,6 +38,7 @@ public class BetterSanctumPlugin : BaseSettingsPlugin<BetterSanctumSettings>
     private EffectHelper _effectHelper;
     private RewardTracker _rewardTracker;
     private SanctumProbe _probe;
+    private string _lastBuffProbeArea;
     private Func<BaseItemType, double> _currencyPrice;
     private readonly Stopwatch _sincePriceLookupStopwatch = Stopwatch.StartNew();
     private double _divineChaosRate;
@@ -454,6 +456,38 @@ public class BetterSanctumPlugin : BaseSettingsPlugin<BetterSanctumSettings>
         }
     }
 
+    // Sampled when the floor map opens rather than on area change: the player entity and
+    // its buffs are not necessarily loaded the moment a zone changes, and the map is
+    // opened once per room anyway, which is exactly the rate an affliction needs watching
+    // at. Keyed on the instance id, so re-entering the same floor still samples again.
+    private void ProbeBuffs()
+    {
+        var floorWindow = GameController?.IngameState?.IngameUi?.SanctumFloorWindow;
+        if (floorWindow is not { IsVisible: true })
+        {
+            return;
+        }
+
+        var areaKey = $"{GameController.Area?.CurrentArea?.Area?.RawName}/{GameController.Area?.CurrentArea?.InstanceId}";
+        if (areaKey == _lastBuffProbeArea)
+        {
+            return;
+        }
+
+        _lastBuffProbeArea = areaKey;
+        try
+        {
+            var buffs = GameController.Player?.GetComponent<Buffs>()?.BuffsList;
+            _probe.LogBuffs(buffs?.Select(x => x.DisplayName is { Length: > 0 } display && display != x.Name
+                ? $"{x.Name} ({display})"
+                : x.Name));
+        }
+        catch (Exception e)
+        {
+            LogError($"[BetterSanctum] could not read buffs: {e.Message}", 10);
+        }
+    }
+
     public override void Render()
     {
         // Ahead of every early return below, since the point of the probe is the state
@@ -462,6 +496,7 @@ public class BetterSanctumPlugin : BaseSettingsPlugin<BetterSanctumSettings>
         {
             _probe.LogState(GameController?.IngameState?.IngameUi?.SanctumFloorWindow,
                 GameController?.Area?.CurrentArea?.Area?.RawName);
+            ProbeBuffs();
         }
 
         if (Settings.DuplicateRun)

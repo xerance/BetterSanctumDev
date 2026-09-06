@@ -38,6 +38,28 @@ public class SanctumProbe
         }
     }
 
+    // Unknown 3. Golden, Red and Purple Smoke hide parts of the floor map, so a run under
+    // one of them undercounts rather than reporting nothing, and has to be filterable.
+    // They are player afflictions rather than room effects, and nothing found so far says
+    // where the active ones live - buffs are the likeliest place, so this writes the
+    // player's buff names out to be read against the affliction list.
+    //
+    // Sampled once per area rather than on change: buffs churn constantly in combat, an
+    // affliction lasts the floor, so one sample per room says what is needed and keeps
+    // the file readable.
+    public void LogBuffs(IEnumerable<string> buffNames)
+    {
+        try
+        {
+            var names = buffNames?.Where(x => !string.IsNullOrWhiteSpace(x)).OrderBy(x => x).ToList();
+            Write($"buffs [{(names == null ? "<null>" : string.Join(", ", names))}]");
+        }
+        catch (Exception e)
+        {
+            Write($"buffs <{e.GetType().Name}>");
+        }
+    }
+
     // Unknown 1. The hub is a static zone entered from the map device rather than from a
     // floor, so it never appears while the floor map is open. Both Id and RawName are
     // logged: Id is the internal identifier and the better thing to key on if they differ.
