@@ -292,8 +292,8 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
     // Quantity is measured rather than read: nothing in room data exposes it.
     private string DescribeRewardPrice(SanctumDeferredRewardCategory reward, int order, int assignedTier)
     {
-        // Same gate as routing: a price on a tier you rated low is clutter, not information
-        if (!Settings.MapDisplay.ShowRewardPrices || assignedTier > Settings.Routing.PriceMaxTier)
+        // A currency you have said to ignore is not worth the clutter of a price
+        if (!Settings.MapDisplay.ShowRewardPrices || assignedTier >= SanctumValues.CurrencyIgnore)
         {
             return "";
         }
@@ -1149,7 +1149,7 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
         {
             var floor = BetterSanctumTrackerSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix);
 
-            var routeValue = new Dictionary<(int, int), (int[] Counts, int Next)>();
+            var routeValue = new Dictionary<(int, int), (RouteValue Value, int Next)>();
             for (var layerIndex = roomsByLayer.Count - 1; layerIndex >= 0; layerIndex--)
             {
                 var roomLayer = roomsByLayer[layerIndex];
@@ -1163,7 +1163,7 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
                     }
 
                     var next = -1;
-                    int[] nextCounts = null;
+                    RouteValue? nextValue = null;
                     foreach (var connection in floorWindow.FloorData.RoomLayout[layerIndex][roomIndex])
                     {
                         if (!routeValue.TryGetValue((layerIndex + 1, connection), out var candidate))
@@ -1171,10 +1171,10 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
                             continue;
                         }
 
-                        if (nextCounts == null || CompareRoutes(candidate.Counts, nextCounts) > 0)
+                        if (nextValue == null || CompareRoutes(candidate.Value, nextValue.Value) > 0)
                         {
                             next = connection;
-                            nextCounts = candidate.Counts;
+                            nextValue = candidate.Value;
                         }
                     }
 
@@ -1184,13 +1184,7 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
                         continue;
                     }
 
-                    var total = new int[RouteValueSize];
-                    for (var tier = 0; tier < RouteValueSize; tier++)
-                    {
-                        total[tier] = own[tier] + nextCounts[tier];
-                    }
-
-                    routeValue[(layerIndex, roomIndex)] = (total, next);
+                    routeValue[(layerIndex, roomIndex)] = (own + nextValue.Value, next);
                 }
             }
 
@@ -1215,7 +1209,7 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
             }
 
             var routeRoom = -1;
-            int[] routeCounts = null;
+            RouteValue? routeBest = null;
             if (startLayer < roomsByLayer.Count)
             {
                 foreach (var roomIndex in startCandidates)
@@ -1225,10 +1219,10 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
                         continue;
                     }
 
-                    if (routeCounts == null || CompareRoutes(candidate.Counts, routeCounts) > 0)
+                    if (routeBest == null || CompareRoutes(candidate.Value, routeBest.Value) > 0)
                     {
                         routeRoom = roomIndex;
-                        routeCounts = candidate.Counts;
+                        routeBest = candidate.Value;
                     }
                 }
             }
@@ -1357,7 +1351,8 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
                         var tier = Settings.GetCurrencyTier(currencyName, reward.order);
                         if (tier <= Settings.HideCurrencyBelowTier)
                         {
-                            textSize = DrawTextWithBackground(currencyName + DescribeRewardPrice(reward.room, reward.order, tier), lineLocation, GetTierColor(tier), Settings.MapDisplay.BackgroundColor);
+                            var rewardChaos = RewardChaos(reward.room, reward.order, BetterSanctumTrackerSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix));
+                            textSize = DrawTextWithBackground(currencyName + DescribeRewardPrice(reward.room, reward.order, tier), lineLocation, GetRewardColor(rewardChaos), Settings.MapDisplay.BackgroundColor);
                             lineLocation.Y += textSize.Y;
                         }
                     }
@@ -1502,8 +1497,8 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
         lines.Add($"PRICING bridge={(lookup == null ? "<null>" : "resolved")} " +
                   $"categories={(categories == null ? "<null>" : categories.Count.ToString())} " +
                   $"showRewardPrices={Settings.MapDisplay.ShowRewardPrices.Value} " +
-                  $"priceMaxTier={Settings.Routing.PriceMaxTier.Value} " +
-                  $"usePricesInRouting={Settings.Routing.UsePricesInRouting.Value}");
+                  $"roomAnchor={AnchorChaos(Settings.Routing.RoomValuePercentOfDivine.Value):0.#} " +
+                  $"afflictionAnchor={AnchorChaos(Settings.Routing.AfflictionCostPercentOfDivine.Value):0.#} divine={DivineChaos():0.#}");
 
         var seen = new HashSet<string>();
         foreach (var roomLayer in roomsByLayer)
@@ -1613,317 +1608,177 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
 
         return parts.Count > 0 ? $"{type.Name}({string.Join(" ", parts)})" : type.Name;
     }
-
-    // Bonuses shift a value towards the good end rather than adding points, so they stay
-    // meaningful under tier comparison. They never reach 0, which is yours to assign, and
-    // never improve something already at or below neutral.
-    private int AdjustCurrencyValue(int value, int floor)
+    // What a route is worth. Must-takes and hard blocks are counted rather than priced,
+    // because both are absolute: a currency you always want is taken through anything, and
+    // an affliction you never want is refused however rich the room behind it. Everything
+    // else is chaos, so the two halves never have to be converted into one another.
+    private readonly record struct RouteValue(int MustTakes, int HardBlocks, double Chaos)
     {
-        if (value is BetterSanctumTrackerSettings.PrioritizeValue or BetterSanctumTrackerSettings.BlockValue ||
-            value >= BetterSanctumTrackerSettings.NeutralValue)
-        {
-            return value;
-        }
-
-        var shift = 0;
-        if (floor >= 3)
-        {
-            // Later floors roll higher reward tiers
-            shift += Settings.Routing.ContextBiasStrength.Value;
-        }
-
-        return Math.Max(value - shift, 1);
+        public static RouteValue operator +(RouteValue a, RouteValue b) =>
+            new(a.MustTakes + b.MustTakes, a.HardBlocks + b.HardBlocks, a.Chaos + b.Chaos);
     }
 
-    // Folds the run type and floor into the room type's value. A relic that makes a room
-    // type pointless flattens it to neutral; floor rules nudge it by the bias strength.
-    // Neither ever overrides an explicit 0 or 8 - those are your decisions, not context.
-    private int AdjustRoomValue(int value, string roomTypeId, int floor)
+    // Most must-takes first, then fewest hard blocks, then most chaos. The order is what
+    // makes a must-take override a hard block: it is settled before blocks are looked at.
+    private static int CompareRoutes(RouteValue a, RouteValue b)
     {
-        if (value is BetterSanctumTrackerSettings.PrioritizeValue or BetterSanctumTrackerSettings.BlockValue)
+        var mustTakes = a.MustTakes.CompareTo(b.MustTakes);
+        if (mustTakes != 0)
         {
-            return value;
+            return mustTakes;
         }
 
-        var runType = Settings.RunType;
-        if (runType == BetterSanctumTrackerSettings.RunTypeHourOfDivinity && roomTypeId == "BoonFountain" ||
-            runType == BetterSanctumTrackerSettings.RunTypeGildedChalice && roomTypeId == "Fountain")
+        var blocks = b.HardBlocks.CompareTo(a.HardBlocks);
+        if (blocks != 0)
         {
-            // No boons to gain, or no resolve to recover: the room has nothing to offer.
-            // CurseFountain is deliberately untouched - it stays bad on its own merits.
-            return BetterSanctumTrackerSettings.NeutralValue;
+            return blocks;
         }
 
-        var bias = Settings.Routing.ContextBiasStrength.Value;
-        if (bias == 0)
-        {
-            return value;
-        }
-
-        // Deals gate the larger rewards late, and coins matter early - but only when
-        // boons are buyable, which Hour of Divinity rules out.
-        // Deals are handled separately, as flat points rather than a tier shift
-        var favoured = floor is >= 1 and <= 2 &&
-                       runType != BetterSanctumTrackerSettings.RunTypeHourOfDivinity &&
-                       roomTypeId is "Treasure" or "Merchant";
-
-        // Lower is better on this scale, and 1 is as good as a weight gets
-        return favoured ? Math.Max(value - bias, 1) : value;
+        return a.Chaos.CompareTo(b.Chaos);
     }
 
-    // A route is counted per axis, because the same tier means very different things
-    // depending on what wears it: a tier-6 affliction can end a run, a tier-6 room type
-    // is an inconvenience. One shared table forced those to cost the same.
-    private const int TierCount = 9;
-    private const int AxisReward = 0;
-    private const int AxisAffliction = 1;
-    private const int AxisRoom = 2;
-    private const int AxisCount = 3;
-    private const int BonusIndex = AxisCount * TierCount;
-    private const int RouteValueSize = BonusIndex + 1;
-
-    private static int Slot(int axis, int tier) => axis * TierCount + tier;
-
-    // Rewards are deliberately bimodal: tier 1 decides routes, everything below it is a
-    // bonus that should never outweigh a calmer path. It takes 24 tier-2 rewards to
-    // justify one bad affliction, which an eight layer floor cannot hold.
-    private static readonly int[] RewardWeights = { 0, 100, 3, 1, 0, -1, -3, -10, 0 };
-
-    // Calibrated against the trades that matter: one tier-1 reward is worth one bad
-    // affliction (100 - 70) but not two (100 - 140), and a tier-7 needs three.
-    private static readonly int[] AfflictionWeights = { 0, 100, 30, 10, 0, -20, -70, -250, 0 };
-
-    // Room type is about how hard the run is, not what it pays, so it sits between the
-    // two: enough to prefer a calm route, never enough to turn down a tier-1.
-    private static readonly int[] RoomWeights = { 0, 20, 10, 4, 0, -4, -15, -40, 0 };
-
-    private static readonly int[] TierWeights = BuildTierWeights();
-
-    private static int[] BuildTierWeights()
+    // A divine in chaos, which every anchor is expressed against. Falls back to a figure
+    // you set rather than to zero: without it the anchors collapse and rooms and
+    // afflictions stop scoring against each other at all.
+    private double DivineChaos()
     {
-        var weights = new int[RouteValueSize];
-        for (var tier = 0; tier < TierCount; tier++)
-        {
-            weights[Slot(AxisReward, tier)] = RewardWeights[tier];
-            weights[Slot(AxisAffliction, tier)] = AfflictionWeights[tier];
-            weights[Slot(AxisRoom, tier)] = RoomWeights[tier];
-        }
-
-        // Flat bonuses are already expressed in these units
-        weights[BonusIndex] = 1;
-        return weights;
+        var rate = GetDivineChaosRate();
+        return rate > 0 ? rate : Settings.Routing.DivineChaosFallback.Value;
     }
 
-    private static int WeighTiers(int[] counts)
-    {
-        var total = 0;
-        for (var slot = 0; slot < RouteValueSize; slot++)
-        {
-            total += counts[slot] * TierWeights[slot];
-        }
+    private double AnchorChaos(int percentOfDivine) => DivineChaos() * percentOfDivine / 100.0;
 
-        return total;
+    // Tier is intent; the price is value. So this only ever scales what a reward is
+    // already worth - 0 is handled as a must-take before it gets here, and 4 is nothing.
+    private double CurrencyMultiplier(int tier)
+    {
+        return tier switch
+        {
+            1 => Settings.Routing.Tier1MultiplierPercent.Value / 100.0,
+            2 => Settings.Routing.Tier2MultiplierPercent.Value / 100.0,
+            3 => Settings.Routing.Tier3MultiplierPercent.Value / 100.0,
+            SanctumValues.CurrencyIgnore => 0,
+            _ => 1,
+        };
     }
 
-    // Constraint tiers score nothing on any axis and are counted across all three
-    private static int ConstraintCount(int[] counts, int tier)
+    // What one offer pays, in chaos. Quantity is the measured figure for that slot, so the
+    // last slot on floor 4 is worth double. An unpriced currency falls back to the unknown
+    // reward figure rather than zero, or a currency the price plugin has never heard of
+    // would read as worthless.
+    private double RewardChaos(SanctumDeferredRewardCategory reward, int order, int floor)
     {
-        return counts[Slot(AxisReward, tier)] + counts[Slot(AxisAffliction, tier)] + counts[Slot(AxisRoom, tier)];
+        var quantity = BetterSanctumTrackerSettings.GetRewardQuantity(reward?.CurrencyName, order, floor);
+        var unit = UnitPriceFor(reward);
+        return unit > 0
+            ? unit * quantity
+            : AnchorChaos(Settings.Routing.UnknownRewardPercentOfDivine.Value);
     }
 
-    // Positive when route a is preferable to route b. Must-takes outrank everything,
-    // including any number of never-enter rooms standing in the way; among routes tied on
-    // those, fewest never-enters wins; only then does the weighted total decide.
-    private static int CompareRoutes(int[] a, int[] b)
+    // What a room's rewards are worth when the map does not list any. A deal hides its
+    // rewards until you are inside it; a room the map has not revealed hides everything.
+    // Neither is empty - a fountain is.
+    private double UnreadRewardChaos(SanctumRoomElement room, int floor)
     {
-        var mustTake = ConstraintCount(a, BetterSanctumTrackerSettings.PrioritizeValue)
-            .CompareTo(ConstraintCount(b, BetterSanctumTrackerSettings.PrioritizeValue));
-        if (mustTake != 0)
+        var fightRoomId = room.Data?.FightRoom?.RoomType?.Id;
+        var rewardRoomId = room.Data?.RewardRoom?.RoomType?.Id;
+
+        if (rewardRoomId == "Deal")
         {
-            return mustTake;
+            // Before floor 3 a deal is not worth what a late one is, and the unknown
+            // figure is the honest stand-in rather than a second slider nobody would tune.
+            return floor >= 3
+                ? AnchorChaos(Settings.Routing.DealValuePercentOfDivine.Value)
+                : AnchorChaos(Settings.Routing.UnknownRewardPercentOfDivine.Value);
         }
 
-        var neverEnter = ConstraintCount(b, BetterSanctumTrackerSettings.BlockValue)
-            .CompareTo(ConstraintCount(a, BetterSanctumTrackerSettings.BlockValue));
-        if (neverEnter != 0)
-        {
-            return neverEnter;
-        }
-
-        return WeighTiers(a).CompareTo(WeighTiers(b));
+        // Nothing known about the room at all, or a reward room whose rewards are hidden
+        var unrevealed = fightRoomId == null && rewardRoomId == null;
+        return unrevealed || rewardRoomId == "Deferral"
+            ? AnchorChaos(Settings.Routing.UnknownRewardPercentOfDivine.Value)
+            : 0;
     }
 
-    // How many rooms of each tier this room contributes. Currency counts its best slot
-    // only, since the three offers are one reward at different timings and you take one.
-    // Quantity comes from measured offer text rather than an assumption. It varies by
-    // currency and slot and not by floor, so no floor term appears here.
-    private int PricePointsFor(SanctumDeferredRewardCategory reward, int order, int floor, int value)
+    // The best slot only, since the three offers are one reward at different timings and
+    // you take exactly one.
+    private (double Chaos, bool MustTake) BestRewardChaos(SanctumRoomElement room, int floor)
     {
-        // Gated on the tier you assigned rather than the floor-adjusted one. The floor 3
-        // bonus promotes mid currency a tier, which would drag chaos into the priced band
-        // on exactly the floors that matter - and chaos is where assuming a quantity of
-        // one is most wrong, arriving in stacks of ten. The four currencies this is meant
-        // for only spawn from floor 3 anyway, so nothing is lost by ignoring the bonus.
-        //
-        // The cap bounds a single room, not a whole route, so letting every tier
-        // contribute would let a path stacked with middling currency out-score one
-        // holding a genuine tier 1.
-        if (!Settings.Routing.UsePricesInRouting || value > Settings.Routing.PriceMaxTier)
-        {
-            return 0;
-        }
-
-        var chaos = PricedChaosFor(reward, order, floor);
-        if (chaos <= 0)
-        {
-            return 0;
-        }
-
-        var points = chaos / Settings.Routing.ChaosPerPoint.Value;
-
-        // Uncapped where price is doing the ranking: the cap exists to stop price
-        // reordering tiers, and in that mode reordering them is the point. The scale is
-        // then ChaosPerPoint alone.
-        //
-        // A priced reward is worth at least a point, because in that mode the price
-        // replaces the tier rather than adding to it - so rounding a cheap reward to
-        // nothing would make its room read as holding no reward at all.
-        return Settings.Routing.PriceRanksTopRewards
-            ? Math.Max((int)points, 1)
-            : (int)Math.Min(points, Settings.Routing.PricePointCap.Value);
-    }
-
-    // What the room pays, in chaos, or zero where there is no price for it. Kept apart
-    // from the points so that having a price can be told from being worth less than one
-    // point, which decides whether the tier or the price ranks the reward.
-    private double PricedChaosFor(SanctumDeferredRewardCategory reward, int order, int floor)
-    {
-        try
-        {
-            var quantity = BetterSanctumTrackerSettings.GetRewardQuantity(reward?.CurrencyName, order, floor);
-            return UnitPriceFor(reward) * quantity;
-        }
-        catch (Exception)
-        {
-            return 0;
-        }
-    }
-
-    // Whether this reward is ranked by price rather than by its tier. Turns on having a
-    // price at all, not on the price being worth a point: a reward that rounds down to
-    // nothing would otherwise fall back to its tier and score the full 100, leaving a
-    // cheap tier-1 ranked above an expensive one.
-    //
-    // Tier 0 is left out deliberately: it is a constraint compared ahead of every sum
-    // rather than a weight, and pricing it would demote a must-take into something
-    // merely valuable.
-    private bool IsPriceRanked(int assignedValue, double chaos)
-    {
-        return Settings.Routing.PriceRanksTopRewards &&
-               Settings.Routing.UsePricesInRouting &&
-               chaos > 0 &&
-               assignedValue > BetterSanctumTrackerSettings.PrioritizeValue &&
-               assignedValue <= Settings.Routing.PriceMaxTier;
-    }
-
-    // How many rooms of each tier this room contributes, kept per axis. Currency counts
-    // its best slot only, since the three offers are one reward at different timings and
-    // you take one.
-    private int[] EvaluateRoom(SanctumRoomElement room, int floor)
-    {
-        var counts = new int[RouteValueSize];
-
-        // The third slot is the end-of-sanctum deferral. It only pays double from floor 4;
-        // before that it is an ordinary offer.
-        var thirdSlotMultiplier = floor >= 4 ? 2 : 1;
-
-        // Chosen on what the slot is worth with its multiplier applied, so a doubled
-        // tier-2 does not displace a tier-1 you could take immediately.
-        var bestSlotValue = -1;
-        var bestSlotWorth = 0;
-        var bestSlotMultiplier = 1;
-        var bestSlotPricePoints = 0;
-        var bestSlotPriceRanked = false;
+        var best = 0.0;
+        var any = false;
+        var mustTake = false;
         foreach (var (reward, order) in room.GetRoomsWithOrder())
         {
-            var assignedValue = Settings.GetCurrencyTier(reward.CurrencyName, order);
-            var value = AdjustCurrencyValue(assignedValue, floor);
-            if (value == BetterSanctumTrackerSettings.PrioritizeValue)
+            any = true;
+            var tier = Settings.GetCurrencyTier(reward.CurrencyName, order);
+            var chaos = RewardChaos(reward, order, floor);
+            if (tier == SanctumValues.CurrencyMustTake)
             {
-                counts[Slot(AxisReward, BetterSanctumTrackerSettings.PrioritizeValue)]++;
-                continue;
+                mustTake = true;
             }
 
-            // A currency you never want is a reason to skip the offer, not the room
-            if (value == BetterSanctumTrackerSettings.BlockValue)
+            var worth = chaos * CurrencyMultiplier(tier);
+            if (worth > best)
             {
-                continue;
-            }
-
-            var multiplier = order == 2 ? thirdSlotMultiplier : 1;
-            var pricePoints = PricePointsFor(reward, order, floor, assignedValue);
-
-            // A price-ranked slot is worth its price and nothing else, so slots inside the
-            // band are compared against each other on value rather than all reading 100.
-            var priceRanked = IsPriceRanked(assignedValue, PricedChaosFor(reward, order, floor));
-            var worth = priceRanked ? pricePoints : RewardWeights[value] * multiplier + pricePoints;
-            if (bestSlotValue < 0 || worth > bestSlotWorth)
-            {
-                bestSlotValue = value;
-                bestSlotWorth = worth;
-                bestSlotMultiplier = multiplier;
-                bestSlotPricePoints = pricePoints;
-                bestSlotPriceRanked = priceRanked;
+                best = worth;
             }
         }
 
-        if (bestSlotValue >= 0)
+        return any ? (best, mustTake) : (UnreadRewardChaos(room, floor), false);
+    }
+
+    // What this room adds to a route, in chaos, plus the two absolutes.
+    private RouteValue EvaluateRoom(SanctumRoomElement room, int floor)
+    {
+        var (rewardChaos, mustTake) = BestRewardChaos(room, floor);
+        var chaos = rewardChaos;
+
+        var roomAnchor = AnchorChaos(Settings.Routing.RoomValuePercentOfDivine.Value);
+        foreach (var roomTypeId in new[] { room.Data?.FightRoom?.RoomType?.Id, room.Data?.RewardRoom?.RoomType?.Id })
         {
-            // Inside the priced band the tier count is replaced by the price rather than
-            // added to, which is what lets one expensive reward beat two ordinary ones.
-            // Counting the tier as well would leave every room in the band worth 100 each
-            // before price was considered, and two of those always beat one.
-            if (!bestSlotPriceRanked)
+            if (roomTypeId != null)
             {
-                // Counting it twice is what doubles its weight
-                counts[Slot(AxisReward, bestSlotValue)] += bestSlotMultiplier;
+                chaos += SanctumValues.RoomValue(Settings.GetRoomTier(roomTypeId), roomAnchor);
             }
-
-            // Capped outside the priced band, so price orders currencies you rated alike
-            // without ever reordering the tiers themselves
-            counts[BonusIndex] += bestSlotPricePoints;
         }
 
-        foreach (var roomTypeId in new[] { room.Data.FightRoom?.RoomType?.Id, room.Data.RewardRoom?.RoomType?.Id })
+        var hardBlocks = 0;
+        if (room.Data?.RoomEffect?.ReadableName is { } effectName)
         {
-            if (roomTypeId == null)
+            var tier = Settings.GetAfflictionTier(effectName);
+            if (SanctumValues.IsHardBlock(tier))
             {
-                continue;
+                hardBlocks = 1;
             }
-
-            counts[Slot(AxisRoom, AdjustRoomValue(Settings.GetRoomTier(roomTypeId), roomTypeId, floor))]++;
-
-            // From floor 3 a deal is effectively a reward, but an unknown one, so it is
-            // worth less than a tier-1 you can read off the map. It clears a low reward
-            // and a good room comfortably, and roughly breaks even against a bad
-            // affliction - which is where the judgement call actually sits.
-            if (roomTypeId == "Deal" && floor >= 3)
+            else
             {
-                counts[BonusIndex] += Settings.Routing.DealValueLateFloors.Value;
+                chaos += SanctumValues.AfflictionCost(tier, AnchorChaos(Settings.Routing.AfflictionCostPercentOfDivine.Value));
             }
         }
 
-        if (room.Data.RoomEffect?.ReadableName is { } effectName)
-        {
-            counts[Slot(AxisAffliction, Settings.GetAfflictionTier(effectName))]++;
-        }
-
-        return counts;
+        return new RouteValue(mustTake ? 1 : 0, hardBlocks, chaos);
     }
 
 
-    private Color GetAfflictionColor(string effectName) => GetTierColor(Settings.GetAfflictionTier(effectName));
-    private Color GetRoomColor(string fightRoomId) => GetTierColor(Settings.GetRoomTier(fightRoomId));
+    // The three axes run on scales of different lengths now, so each is mapped onto the
+    // nine colours rather than indexing them directly. Afflictions start at neutral and
+    // only ever get worse, since none of them is worth having.
+    private Color GetAfflictionColor(string effectName)
+    {
+        var tier = Settings.GetAfflictionTier(effectName);
+        return GetTierColor(4 + (int)Math.Round(tier * 4.0 / SanctumValues.AfflictionTierMax));
+    }
+
+    // Rooms span most of the range but never reach 0, which means must-take and belongs
+    // to rewards alone.
+    private Color GetRoomColor(string roomTypeId)
+    {
+        var tier = Settings.GetRoomTier(roomTypeId);
+        return GetTierColor(1 + (int)Math.Round(tier * 7.0 / SanctumValues.RoomTierMax));
+    }
+
+    // Rewards are coloured by what they are worth rather than by the tier you gave them,
+    // so the map reads as prices at a glance and the tier stays free to mean intent.
+    private Color GetRewardColor(double chaos) => GetTierColor(SanctumValues.ColourBandForValue(chaos, DivineChaos()));
 
     private ColorNode GetTierColor(int value)
     {

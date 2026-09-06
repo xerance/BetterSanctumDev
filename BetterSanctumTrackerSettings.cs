@@ -226,17 +226,17 @@ public class BetterSanctumTrackerSettings : ISettings
                      "\nGilded Chalice blocks resolve recovery: Fountain drops to neutral. CurseFountain is never adjusted.");
 
                 var hideCurrencyBelowTier = profile.HideCurrencyBelowTier;
-                if (ImGui.SliderInt("Hide currency below tier", ref hideCurrencyBelowTier, PrioritizeValue, BlockValue))
+                if (ImGui.SliderInt("Hide currency below tier", ref hideCurrencyBelowTier, 0, SanctumValues.CurrencyTierMax))
                 {
                     profile.HideCurrencyBelowTier = hideCurrencyBelowTier;
                 }
 
                 Hint("Currencies rated worse than this are left out of the room text on the map. It does not affect routing.");
 
-                ImGui.TextDisabled("0 = always route through, 1-3 = good, 4 = neutral, 5-7 = bad (7 heavily so), 8 = never route through");
-                Hint("Below 4 adds to a route, above 4 subtracts, and the further from 4 the more it counts." +
-                     "\nWeights: 1 = +100, 2 = +10, 3 = +5, 5 = -5, 6 = -10, 7 = -120." +
-                     "\n0 and 8 are absolute: a 0 is always routed to, an 8 never is unless a 0 lies beyond it.");
+                ImGui.TextDisabled("Every axis is scored in chaos. Rewards are priced; rooms and afflictions are priced from an anchor set in Routing.");
+                Hint("Currency 0-4: 0 is taken whatever stands in the way, 4 is ignored, 1-3 all count their full price until you bias them in Routing." +
+                     "\nRoom 0-10: 0 is worth the room anchor, 5 is worth nothing, 10 costs the anchor." +
+                     "\nAffliction 0-6: 0 costs nothing, 5 costs the affliction anchor, 6 is never walked into unless a currency 0 lies beyond it.");
 
                 if (ImGui.TreeNode("Currency tiering"))
                 {
@@ -256,7 +256,7 @@ public class BetterSanctumTrackerSettings : ISettings
                             }
 
                             var currentValue = GetCurrencyTier(type, order);
-                            if (ImGui.SliderInt(label, ref currentValue, PrioritizeValue, BlockValue))
+                            if (ImGui.SliderInt(label, ref currentValue, 0, SanctumValues.CurrencyTierMax))
                             {
                                 profile.CurrencyTiers[$"{type}/{order}"] = currentValue;
                             }
@@ -273,7 +273,7 @@ public class BetterSanctumTrackerSettings : ISettings
                     foreach (var type in RoomTypes.Where(t => t.Contains(roomFilter, StringComparison.InvariantCultureIgnoreCase)))
                     {
                         var currentValue = GetRoomTier(type);
-                        if (ImGui.SliderInt(type, ref currentValue, PrioritizeValue, BlockValue))
+                        if (ImGui.SliderInt(type, ref currentValue, 0, SanctumValues.RoomTierMax))
                         {
                             profile.RoomTiers[type] = currentValue;
                         }
@@ -290,7 +290,7 @@ public class BetterSanctumTrackerSettings : ISettings
                     foreach (var (type, description) in AfflictionTypes.Where(t => MatchesFilter($"{t.Item1} {t.Item2}", afflictionFilter)))
                     {
                         var currentValue = GetAfflictionTier(type);
-                        if (ImGui.SliderInt(type, ref currentValue, PrioritizeValue, BlockValue))
+                        if (ImGui.SliderInt(type, ref currentValue, 0, SanctumValues.AfflictionTierMax))
                         {
                             profile.AfflictionTiers[type] = currentValue;
                         }
@@ -358,12 +358,18 @@ public class BetterSanctumTrackerSettings : ISettings
         CurrentProfile = newName;
     }
 
-    // Values run 0-8 with 4 neutral. The ends are constraints rather than weights and
-    // score nothing: 0 means route through this if at all possible, 8 means never. 1-3
-    // and 5-7 are ordinary positive and negative weights, 7 being an outsized penalty.
-    public const int PrioritizeValue = 0;
-    public const int NeutralValue = 4;
-    public const int BlockValue = 8;
+    // Each axis runs on its own scale now, because they no longer mean the same thing.
+    // Currency says what you are after and is priced from the price plugin; rooms and
+    // afflictions are priced from an anchor. Only two positions are absolute: a currency
+    // at 0 is taken whatever stands in the way, an affliction at 6 is never walked into.
+    public const int PrioritizeValue = SanctumValues.CurrencyMustTake;
+
+    // Where nothing has been rated. A currency counts its price in full, a room is worth
+    // nothing either way, and an affliction sits mid-scale - an unrated affliction is a
+    // cost of unknown size rather than a free one.
+    public const int CurrencyDefaultTier = 2;
+    public const int RoomDefaultTier = SanctumValues.RoomNeutralTier;
+    public const int AfflictionDefaultTier = 3;
 
     // Observed quantities per reward slot, keyed by the category's CurrencyName. Measured
     // from offer text across floors 1 to 4: quantity depends on the currency and the slot
@@ -437,116 +443,111 @@ public class BetterSanctumTrackerSettings : ISettings
     }
 
     // A bare name applies to every reward slot; a "name/slot" key overrides one slot.
+    // Tier is intent, not value - the price says what a reward is worth. So only the ends
+    // carry weight by default: 0 is taken whatever stands in the way, 4 is ignored
+    // entirely, and 1 to 3 all count their full price until you bias them.
     public static readonly IReadOnlyDictionary<string, int> DefaultCurrencyTiers = new Dictionary<string, int>
     {
         ["Mirrors of Kalandra"] = 0,
         ["Divine Orbs"] = 1,
         ["Fracturing Orbs"] = 1,
         ["Volatile Vaal Orbs"] = 1,
-        ["Chaos Orbs"] = 2,
+        ["Sacred Orbs"] = 1,
+        ["Exalted Orbs"] = 2,
+        ["Orbs of Annulment"] = 2,
+        ["Ancient Orbs"] = 2,
+        ["Chromatic Orbs"] = 2,
         ["Stacked Decks"] = 2,
         ["Veiled Chaos Orbs"] = 2,
-        ["Orbs of Annulment"] = 2,
-        ["Exalted Orbs"] = 2,
-        ["Chaos Orbs/0"] = 3,
-        ["Chaos Orbs/1"] = 3,
-        ["Chaos Orbs/2"] = 4,
-        ["Orbs of Annulment/0"] = 3,
-        ["Orbs of Annulment/2"] = 4,
-        ["Orbs of Annulment/1"] = 3,
-        ["Exalted Orbs/0"] = 3,
-        ["Exalted Orbs/1"] = 3,
-        ["Exalted Orbs/2"] = 3,
-        ["Ancient Orbs/0"] = 3,
-        ["Ancient Orbs/1"] = 3,
-        ["Sacred Orbs/0"] = 3,
-        ["Sacred Orbs/1"] = 3,
-        ["Sacred Orbs/2"] = 3,
-        ["Stacked Decks/0"] = 3,
-        ["Stacked Decks/1"] = 3,
-        ["Stacked Decks/2"] = 4,
-        ["Chromatic Orbs/0"] = 3,
-        ["Chromatic Orbs/1"] = 3,
+        ["Divine Vessels"] = 2,
+        ["Chaos Orbs"] = 3,
     };
 
-    // Fight rooms are graded on the resolve they tend to cost, reward rooms on what
-    // they hand you. Boss and Final sit at neutral deliberately: they are in the last
-    // layer that every route passes through, so their value cannot separate two routes.
+    // Fight rooms are graded on the resolve they tend to cost, reward rooms on what they
+    // hand you, and 5 is worth nothing either way. Boss and Final sit at neutral
+    // deliberately: they are in the last layer every route passes through, so their value
+    // cannot separate two routes.
+    //
+    // Deal is neutral too. What a deal pays is its own setting, since the map reads its
+    // rewards as empty, and grading the room type as well would count it twice.
     public static readonly IReadOnlyDictionary<string, int> DefaultRoomTiers = new Dictionary<string, int>
     {
-        ["Explore"] = 3,
-        ["Maze"] = 4,
-        ["Puzzle"] = 4,
-        ["Gauntlet"] = 4,
-        ["Lair"] = 4,
-        ["Vault"] = 4,
-        ["Boss"] = 4,
-        ["Miniboss"] = 4,
+        ["Explore"] = 4,
+        ["Maze"] = 5,
+        ["Puzzle"] = 5,
+        ["Gauntlet"] = 5,
+        ["Lair"] = 5,
+        ["Vault"] = 5,
+        ["Boss"] = 5,
+        ["Miniboss"] = 6,
         ["Arena"] = 6,
-        ["Merchant"] = 3,
-        ["BoonFountain"] = 3,
+        ["Merchant"] = 4,
+        ["BoonFountain"] = 4,
         ["RainbowFountain"] = 3,
-        ["Deferral"] = 4,
-        ["Fountain"] = 4,
+        ["Deferral"] = 5,
+        ["Fountain"] = 5,
         ["Treasure"] = 3,
         ["TreasureMinor"] = 4,
-        ["Deal"] = 4,
-        ["Final"] = 4,
-        ["CurseFountain"] = 4,
+        ["Deal"] = 5,
+        ["Final"] = 5,
+        ["CurseFountain"] = 7,
     };
 
-    // 8 is reserved for the run-enders. Everything else is a weight, not a bar.
+    // 6 is reserved for the run-enders and is absolute; 0 to 5 are costs running from
+    // nothing up to the whole anchor.
     public static readonly IReadOnlyDictionary<string, int> DefaultAfflictionTiers = new Dictionary<string, int>
     {
-        ["Accursed Prism"] = 8,
-        ["Poisoned Water"] = 8,
-        ["Cutpurse"] = 6,
-        ["Purple Smoke"] = 7,
-        ["Veiled Sight"] = 6,
-        ["Red Smoke"] = 6,
-        ["Golden Smoke"] = 8,
-        ["Deadly Snare"] = 8,
-        ["Floor Tax"] = 6,
-        ["Liquid Cowardice"] = 7,
-        ["Unhallowed Amulet"] = 6,
-        ["Rusted Coin"] = 6,
-        ["Chiselled Stone"] = 6,
-        ["Fiendish Wings"] = 6,
-        ["Empty Trove"] = 6,
-        ["Demonic Skull"] = 6,
-        ["Unassuming Brick"] = 6,
-        ["Worn Sandals"] = 5,
-        ["Ghastly Scythe"] = 8,
-        ["Rapid Quicksand"] = 6,
-        ["Black Smoke"] = 5,
-        ["Deceptive Mirror"] = 7,
-        ["Tattered Blindfold"] = 5,
-        ["Door Tax"] = 6,
-        ["Anomaly Attractor"] = 5,
-        ["Unquenched Thirst"] = 5,
-        ["Dark Pit"] = 5,
-        ["Orb of Negation"] = 8,
-        ["Unholy Urn"] = 5,
-        ["Haemorrhage"] = 5,
-        ["Mark of Terror"] = 5,
-        ["Concealed Anomaly"] = 5,
-        ["Spiked Shell"] = 5,
-        ["Honed Claws"] = 5,
-        ["Unhallowed Ring"] = 6,
-        ["Tight Choker"] = 5,
-        ["Spilt Purse"] = 5,
-        ["Charred Coin"] = 5,
-        ["Phantom Illusion"] = 6,
-        ["Corrupted Lockpick"] = 5,
-        ["Glass Shard"] = 7,
+        ["Accursed Prism"] = 6,
+        ["Poisoned Water"] = 6,
+        ["Golden Smoke"] = 6,
+        ["Deadly Snare"] = 6,
+        ["Ghastly Scythe"] = 6,
+        ["Orb of Negation"] = 6,
+        ["Purple Smoke"] = 4,
+        ["Liquid Cowardice"] = 4,
+        ["Deceptive Mirror"] = 4,
+        ["Glass Shard"] = 4,
+        ["Cutpurse"] = 3,
+        ["Veiled Sight"] = 3,
+        ["Red Smoke"] = 3,
+        ["Floor Tax"] = 3,
+        ["Unhallowed Amulet"] = 3,
+        ["Rusted Coin"] = 3,
+        ["Chiselled Stone"] = 3,
+        ["Fiendish Wings"] = 3,
+        ["Empty Trove"] = 3,
+        ["Demonic Skull"] = 3,
+        ["Unassuming Brick"] = 3,
+        ["Rapid Quicksand"] = 3,
+        ["Door Tax"] = 3,
+        ["Unhallowed Ring"] = 3,
+        ["Phantom Illusion"] = 3,
+        ["Worn Sandals"] = 2,
+        ["Black Smoke"] = 2,
+        ["Tattered Blindfold"] = 2,
+        ["Anomaly Attractor"] = 2,
+        ["Unquenched Thirst"] = 2,
+        ["Dark Pit"] = 2,
+        ["Unholy Urn"] = 2,
+        ["Haemorrhage"] = 2,
+        ["Mark of Terror"] = 2,
+        ["Concealed Anomaly"] = 2,
+        ["Spiked Shell"] = 2,
+        ["Honed Claws"] = 2,
+        ["Tight Choker"] = 2,
+        ["Spilt Purse"] = 2,
+        ["Charred Coin"] = 2,
+        ["Corrupted Lockpick"] = 2,
     };
 
-
+    // One run type for now. Hour of Divinity and Gilded Chalice flattened a room type to
+    // neutral each, which was a tier adjustment, and tier adjustments no longer exist -
+    // rooms carry a chaos value now. They come back as value adjustments once the value
+    // system has been used enough to know what they should be worth.
     public const int RunTypeNormal = 0;
-    public const int RunTypeHourOfDivinity = 1;
-    public const int RunTypeGildedChalice = 2;
 
-    public static readonly string[] RunTypeNames = { "Normal", "The Hour of Divinity", "The Gilded Chalice" };
+    public static readonly string[] RunTypeNames = { "Normal (no adjustments)" };
+
 
     // Floors are identified by the prefix on their room ids; the area name does not
     // track the floor. Nave and Crypt are the last two in some order, which no rule
@@ -564,15 +565,14 @@ public class BetterSanctumTrackerSettings : ISettings
         return prefix != null && FloorsByRoomPrefix.TryGetValue(prefix, out var floor) ? floor : 0;
     }
 
-    public const int CurrentScaleVersion = 6;
+    public const int CurrentScaleVersion = 7;
 
-    // The old scales were 1-5 for currency and 1-3 for rooms and afflictions, both with
-    // 1 best. Nothing is mapped onto 0 or 7 - promoting a room to "never enter" is a
-    // decision to make deliberately, not one to inherit from a rescale.
-    private static int MigrateTriTier(int value) => value switch { 1 => 2, 2 => 4, 3 => 6, _ => NeutralValue };
-
-    private static int MigrateCurrencyTier(int value) => value switch { 1 => 1, 2 => 2, 3 => 4, 4 => 5, 5 => 6, _ => NeutralValue };
-
+    // Version 7 moved all three axes onto chaos, and onto scales of different lengths:
+    // currency 0-4, rooms 0-10, afflictions 0-6. A tier from the old 0-8 scale does not
+    // mean anything on any of them - a 6 was a bad affliction and is now the hard block,
+    // a 6 was a poor room and is now mildly bad - so an old profile is replaced rather
+    // than converted. Reading numbers across as if they still meant the same thing would
+    // be worse than starting from defaults, which is where these are chosen to be usable.
     private static void MigrateProfile(ProfileContent profile)
     {
         if (profile.ScaleVersion >= CurrentScaleVersion)
@@ -580,60 +580,11 @@ public class BetterSanctumTrackerSettings : ISettings
             return;
         }
 
-        profile.CurrencyTiers = profile.CurrencyTiers.ToDictionary(x => x.Key, x => MigrateCurrencyTier(x.Value));
-        profile.RoomTiers = profile.RoomTiers.ToDictionary(x => x.Key, x => MigrateTriTier(x.Value));
-        profile.AfflictionTiers = profile.AfflictionTiers.ToDictionary(x => x.Key, x => MigrateTriTier(x.Value));
-        // 5 was the old maximum and meant "hide nothing", which is 7 on the new scale
-        profile.HideCurrencyBelowTier = profile.HideCurrencyBelowTier >= 5 ? BlockValue : MigrateCurrencyTier(profile.HideCurrencyBelowTier);
-        if (profile.ScaleVersion < 3 && profile.DuplicateRun)
-        {
-            // The old checkbox meant Hour of Divinity specifically
-            profile.RunType = RunTypeHourOfDivinity;
-        }
-
-        if (profile.ScaleVersion < 4)
-        {
-            // Seed only the room types the profile never had an entry for. Upstream set
-            // four and left the rest implicitly neutral, which was minimalism rather than
-            // a judgement, so filling them in does not overwrite anything you chose.
-            foreach (var (roomType, tier) in DefaultRoomTiers)
-            {
-                if (!profile.RoomTiers.ContainsKey(roomType))
-                {
-                    profile.RoomTiers[roomType] = tier;
-                }
-            }
-        }
-
-        if (profile.ScaleVersion < 5 && profile.HideCurrencyBelowTier == 7)
-        {
-            // 7 was the top of the scale and meant "hide nothing" until 8 was added
-            profile.HideCurrencyBelowTier = BlockValue;
-        }
-
-        if (profile.ScaleVersion < 6)
-        {
-            foreach (var (currency, tier) in DefaultCurrencyTiers)
-            {
-                if (!profile.CurrencyTiers.ContainsKey(currency))
-                {
-                    profile.CurrencyTiers[currency] = tier;
-                }
-            }
-
-            // Only lift entries still holding the value they were shipped with, so a
-            // rating you actually chose is never overwritten by a change of default.
-            if (profile.CurrencyTiers.GetValueOrDefault("Mirrors of Kalandra") == 1)
-            {
-                profile.CurrencyTiers["Mirrors of Kalandra"] = PrioritizeValue;
-            }
-
-            if (profile.RoomTiers.GetValueOrDefault("Explore") == 2)
-            {
-                profile.RoomTiers["Explore"] = 3;
-            }
-        }
-
+        profile.CurrencyTiers = new Dictionary<string, int>(DefaultCurrencyTiers);
+        profile.RoomTiers = new Dictionary<string, int>(DefaultRoomTiers);
+        profile.AfflictionTiers = new Dictionary<string, int>(DefaultAfflictionTiers);
+        profile.HideCurrencyBelowTier = SanctumValues.CurrencyTierMax;
+        profile.RunType = RunTypeNormal;
         profile.ScaleVersion = CurrentScaleVersion;
     }
 
@@ -673,7 +624,7 @@ public class BetterSanctumTrackerSettings : ISettings
 
     public int GetRoomTier(string type)
     {
-        return GetCurrentProfile().profile.RoomTiers.GetValueOrDefault(type ?? "", NeutralValue);
+        return GetCurrentProfile().profile.RoomTiers.GetValueOrDefault(type ?? "", RoomDefaultTier);
     }
 
     public int GetCurrencyTier(string type, int order)
@@ -682,7 +633,7 @@ public class BetterSanctumTrackerSettings : ISettings
         return currencyTiers.TryGetValue($"{type ?? ""}/{order}", out var tier) ||
                currencyTiers.TryGetValue(type ?? "", out tier)
             ? tier
-            : NeutralValue;
+            : CurrencyDefaultTier;
     }
 
     // Read off the active profile, so the plugin keeps reading Settings.X unchanged.
@@ -698,7 +649,7 @@ public class BetterSanctumTrackerSettings : ISettings
 
     public int GetAfflictionTier(string type)
     {
-        return GetCurrentProfile().profile.AfflictionTiers.GetValueOrDefault(type ?? "", NeutralValue);
+        return GetCurrentProfile().profile.AfflictionTiers.GetValueOrDefault(type ?? "", AfflictionDefaultTier);
     }
 
 
@@ -738,7 +689,7 @@ public class ProfileContent
 
     // Superseded by RunType. Read once by MigrateProfile, unused after.
     public bool DuplicateRun = false;
-    public int HideCurrencyBelowTier = 3;
+    public int HideCurrencyBelowTier = SanctumValues.CurrencyTierMax;
 
     [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
     public Dictionary<string, int> CurrencyTiers = new(BetterSanctumTrackerSettings.DefaultCurrencyTiers);
@@ -778,50 +729,47 @@ public static class SettingsHelp
     }
 }
 
-[Submenu(CollapsedByDefault = false)]
+[Submenu(CollapsedByDefault = true)]
 public class RoutingSettings
 {
     [JsonIgnore]
     public CustomNode Help { get; set; } = SettingsHelp.Block(
-        "Picks one room per layer from where you stand to the boss and frames it.",
-        "Rooms are counted by tier and weighted per axis, because the same tier means different things: a tier-1 reward is 100 while a tier-2 is only 3, so lesser rewards never outweigh a calmer route. A bad affliction is -70, so one tier-1 reward is worth one but not two. Room type sits between the two.",
-        "Tier 0 is always routed to and tier 8 never is, unless a 0 lies beyond it.",
-        "Use prices in routing asks the Ninja Price plugin what a reward is worth and adds it as capped points, so currencies you rated the same are ordered by value - fracturing over divine when it is worth more. Quantity is assumed to be one, or two for the third slot on floor 4, which is close for the expensive currencies that decide routes and understates cheap ones that do not. Only tiers up to Price max tier are affected, since the cap bounds one room rather than a whole route, and the tier counted is the one you assigned rather than the floor-adjusted one - otherwise the floor 3 bonus would drag cheap stacked currency into the priced band.",
-        "Price max tier is the worst tier a price still reaches, so it switches pricing off from the good end down rather than the bad end up. At 0 only tier-0 rewards are priced - for most tier sets that is mirrors alone, and every other reward then shows no price on the map and contributes no points to routing, so two tier-1 rewards tie exactly and the route falls through to room types. Set it to 1 to price the rewards that actually decide routes.",
-        "Price ranks top rewards changes what happens inside that band: instead of every reward there counting as its tier and price breaking the tie, the reward is ranked on price alone. Two tier-1 rooms no longer beat one automatically - a single reward worth more than both together wins. Rewards outside the band are untouched, and tier 0 stays a constraint rather than becoming a price. Price is uncapped in this mode, since capping it is what stops it reordering tiers and reordering them is the point, so Chaos per point is the only scale left: raise it until the routes look right.",
-        "Bias strength scales the floor adjustments only, each point being one tier step: on floors 3-4 good currency improves and Deal gains 50 points, on floors 1-2 Treasure and Merchant improve unless you are running Hour of Divinity. Set it to 0 to score purely on the tiers you assigned.",
-        "Relic adjustments are not scaled and apply at any strength: Hour of Divinity flattens BoonFountain to neutral, Gilded Chalice flattens Fountain.");
+        "Picks one room per layer from where you stand to the boss and frames it. Routes are scored in chaos: the reward you would take, less what the rooms and afflictions on the way cost.",
+        "Rewards are priced from the price plugin and multiplied by the measured quantity for their slot, so the third slot on floor 4 counts double. Without a price plugin nothing has a price and only the anchors below score.",
+        "Rooms and afflictions have no price of their own, so they are set as a percentage of a divine and move with it. A room at tier 0 is worth the room anchor, tier 5 nothing, tier 10 costs the anchor. An affliction at tier 5 costs the affliction anchor, and tier 6 is never walked into.",
+        "Two things are absolute and are compared before any chaos: a currency at tier 0 is routed to through anything, including an affliction at 6, and an affliction at 6 is otherwise never entered.");
 
     public ToggleNode EnablePathfinding { get; set; } = new ToggleNode(true);
     public ColorNode BestPathColor { get; set; } = new(Color.Cyan);
     public RangeNode<int> BestPathFrameThickness { get; set; } = new RangeNode<int>(3, 0, 10);
     public RangeNode<int> BestPathLineThickness { get; set; } = new RangeNode<int>(4, 0, 10);
-    // Scales the floor-based adjustments by one tier step per point. Relic nullification
-    // is a constraint rather than a preference and is deliberately not scaled by it.
-    // Prices come from the Ninja Price plugin; without it this does nothing.
-    public ToggleNode UsePricesInRouting { get; set; } = new ToggleNode(false);
 
-    // Chaos per point, and the most points a price may ever contribute. The cap keeps
-    // price subordinate: at 20 it can outweigh a room type but never a tier step in
-    // rewards, which is 97, nor a bad affliction at -70.
-    public RangeNode<int> ChaosPerPoint { get; set; } = new RangeNode<int>(50, 1, 500);
-    public RangeNode<int> PricePointCap { get; set; } = new RangeNode<int>(20, 0, 100);
+    // Anchors, as a percentage of a divine rather than a chaos figure, so the trade
+    // between a reward and the pain of reaching it holds as the economy moves. Percent
+    // rather than a fraction because the settings menu draws integer sliders.
+    public RangeNode<int> RoomValuePercentOfDivine { get; set; } = new RangeNode<int>(40, 0, 300);
+    public RangeNode<int> AfflictionCostPercentOfDivine { get; set; } = new RangeNode<int>(80, 0, 300);
 
-    // Highest tier a price may influence. Tier 1 by default: those are the rewards that
-    // decide routes, and they are rare enough per route that accumulated price cannot
-    // outgrow a tier step.
-    public RangeNode<int> PriceMaxTier { get; set; } = new RangeNode<int>(1, 0, 8);
+    // What a reward is assumed to be worth when it cannot be read: a room the map has not
+    // revealed, or a currency the price plugin does not know. Zero would make an unknown
+    // room worthless and route you around everything you have not seen yet.
+    public RangeNode<int> UnknownRewardPercentOfDivine { get; set; } = new RangeNode<int>(20, 0, 300);
 
-    // Ranks rewards inside the priced band by what they are worth instead of by tier.
-    // Off by default: it deliberately breaks the rule that price never reorders tiers,
-    // which is the rule the rest of the weighting is calibrated against.
-    public ToggleNode PriceRanksTopRewards { get; set; } = new ToggleNode(false);
+    // A deal reads its rewards as empty on the map - they only exist once you are inside -
+    // so it is worth an assumption rather than a price. Late floors only; before floor 3
+    // a deal is worth the unknown reward figure above.
+    public RangeNode<int> DealValuePercentOfDivine { get; set; } = new RangeNode<int>(50, 0, 300);
 
-    // What a deal room is worth from floor 3, in the same units as the tier weights:
-    // a tier-1 reward is 100, a bad affliction is -70.
-    public RangeNode<int> DealValueLateFloors { get; set; } = new RangeNode<int>(80, 0, 200);
+    // Falls back to this when no price plugin is present, so the anchors still resolve to
+    // something and rooms and afflictions keep scoring against each other.
+    public RangeNode<int> DivineChaosFallback { get; set; } = new RangeNode<int>(400, 1, 100000);
 
-    public RangeNode<int> ContextBiasStrength { get; set; } = new RangeNode<int>(1, 0, 5);
+    // Bias, as a percentage of the price. Tier 0 is a must-take and tier 4 is ignored, so
+    // only the three in between are worth a multiplier - and at 100 each they simply count
+    // what they are worth, which is the point of pricing them in the first place.
+    public RangeNode<int> Tier1MultiplierPercent { get; set; } = new RangeNode<int>(100, 0, 500);
+    public RangeNode<int> Tier2MultiplierPercent { get; set; } = new RangeNode<int>(100, 0, 500);
+    public RangeNode<int> Tier3MultiplierPercent { get; set; } = new RangeNode<int>(100, 0, 500);
 }
 
 [Submenu(CollapsedByDefault = true)]
