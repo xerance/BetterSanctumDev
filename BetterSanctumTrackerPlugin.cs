@@ -1759,23 +1759,35 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
             return 0;
         }
 
+        var chaos = PricedChaosFor(reward, order, floor);
+        if (chaos <= 0)
+        {
+            return 0;
+        }
+
+        var points = chaos / Settings.Routing.ChaosPerPoint.Value;
+
+        // Uncapped where price is doing the ranking: the cap exists to stop price
+        // reordering tiers, and in that mode reordering them is the point. The scale is
+        // then ChaosPerPoint alone.
+        //
+        // A priced reward is worth at least a point, because in that mode the price
+        // replaces the tier rather than adding to it - so rounding a cheap reward to
+        // nothing would make its room read as holding no reward at all.
+        return Settings.Routing.PriceRanksTopRewards
+            ? Math.Max((int)points, 1)
+            : (int)Math.Min(points, Settings.Routing.PricePointCap.Value);
+    }
+
+    // What the room pays, in chaos, or zero where there is no price for it. Kept apart
+    // from the points so that having a price can be told from being worth less than one
+    // point, which decides whether the tier or the price ranks the reward.
+    private double PricedChaosFor(SanctumDeferredRewardCategory reward, int order, int floor)
+    {
         try
         {
             var quantity = BetterSanctumTrackerSettings.GetRewardQuantity(reward?.CurrencyName, order, floor);
-            var chaos = UnitPriceFor(reward) * quantity;
-            if (chaos <= 0)
-            {
-                return 0;
-            }
-
-            var points = chaos / Settings.Routing.ChaosPerPoint.Value;
-
-            // Uncapped where price is doing the ranking: the cap exists to stop price
-            // reordering tiers, and in that mode reordering them is the point. The scale
-            // is then ChaosPerPoint alone.
-            return (int)(Settings.Routing.PriceRanksTopRewards
-                ? points
-                : Math.Min(points, Settings.Routing.PricePointCap.Value));
+            return UnitPriceFor(reward) * quantity;
         }
         catch (Exception)
         {
@@ -1783,14 +1795,19 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
         }
     }
 
-    // Whether this reward is ranked by price rather than by its tier. Tier 0 is left out
-    // deliberately: it is a constraint compared ahead of every sum, not a weight, and
-    // pricing it would demote a must-take into something merely valuable.
-    private bool IsPriceRanked(int assignedValue, int pricePoints)
+    // Whether this reward is ranked by price rather than by its tier. Turns on having a
+    // price at all, not on the price being worth a point: a reward that rounds down to
+    // nothing would otherwise fall back to its tier and score the full 100, leaving a
+    // cheap tier-1 ranked above an expensive one.
+    //
+    // Tier 0 is left out deliberately: it is a constraint compared ahead of every sum
+    // rather than a weight, and pricing it would demote a must-take into something
+    // merely valuable.
+    private bool IsPriceRanked(int assignedValue, double chaos)
     {
         return Settings.Routing.PriceRanksTopRewards &&
                Settings.Routing.UsePricesInRouting &&
-               pricePoints > 0 &&
+               chaos > 0 &&
                assignedValue > BetterSanctumTrackerSettings.PrioritizeValue &&
                assignedValue <= Settings.Routing.PriceMaxTier;
     }
@@ -1834,7 +1851,7 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
 
             // A price-ranked slot is worth its price and nothing else, so slots inside the
             // band are compared against each other on value rather than all reading 100.
-            var priceRanked = IsPriceRanked(assignedValue, pricePoints);
+            var priceRanked = IsPriceRanked(assignedValue, PricedChaosFor(reward, order, floor));
             var worth = priceRanked ? pricePoints : RewardWeights[value] * multiplier + pricePoints;
             if (bestSlotValue < 0 || worth > bestSlotWorth)
             {
