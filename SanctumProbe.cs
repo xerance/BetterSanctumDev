@@ -3,8 +3,8 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using ExileCore;
 using ExileCore.PoEMemory.Elements.Sanctum;
-using ExileCore.PoEMemory.MemoryObjects;
 
 namespace BetterSanctum;
 
