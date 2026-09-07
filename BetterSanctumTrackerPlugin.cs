@@ -1764,6 +1764,54 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
         return any ? (best, mustTake) : (UnreadRewardChaos(room, floor), false);
     }
 
+    // The run type shifts a tier by a step before it is priced, rather than adding chaos,
+    // so an adjustment keeps its meaning whatever the anchors are set to.
+    //
+    // Coins buy boons, so a shop is worth more on any floor of an ordinary run, and the
+    // treasure rooms that pay them are worth more early while there is still a run left to
+    // spend in. The relic runs each nullify one room type outright: no boons to gain, or
+    // no resolve to recover, leaves the room with nothing to offer, which is tier 5.
+    private int AdjustRoomTier(int tier, string roomTypeId, int floor)
+    {
+        var runType = Settings.RunType;
+        if (runType == BetterSanctumTrackerSettings.RunTypeHourOfDivinity && roomTypeId == "BoonFountain" ||
+            runType == BetterSanctumTrackerSettings.RunTypeGildedChalice && roomTypeId == "Fountain")
+        {
+            return SanctumValues.RoomNeutralTier;
+        }
+
+        if (runType == BetterSanctumTrackerSettings.RunTypeDefault)
+        {
+            return tier;
+        }
+
+        // Hour of Divinity has no boons to buy, so coins are worth less and the rooms that
+        // pay them are not worth going out of the way for. CurseFountain is never adjusted.
+        var boonsAreWorthBuying = runType != BetterSanctumTrackerSettings.RunTypeHourOfDivinity;
+        var favoured = boonsAreWorthBuying &&
+                       (roomTypeId == "Merchant" ||
+                        floor <= 2 && roomTypeId is "Treasure" or "TreasureMinor");
+
+        return favoured ? Math.Max(tier - 1, 0) : tier;
+    }
+
+    // Coins stop mattering once there is little run left to spend them in, so the
+    // afflictions that attack them cost a step less on the last two floors.
+    //
+    // A hard block is never adjusted. It is a decision that this is not walked through,
+    // not a weight, and a run type is not grounds to overturn it.
+    private int AdjustAfflictionTier(int tier, string effectName, int floor)
+    {
+        if (SanctumValues.IsHardBlock(tier) || Settings.RunType == BetterSanctumTrackerSettings.RunTypeDefault)
+        {
+            return tier;
+        }
+
+        return floor >= 3 && BetterSanctumTrackerSettings.AfflictionAffectsAureus(effectName)
+            ? Math.Max(tier - 1, 0)
+            : tier;
+    }
+
     // What this room adds to a route, in chaos, plus the two absolutes.
     private RouteValue EvaluateRoom(SanctumRoomElement room, int floor)
     {
@@ -1775,14 +1823,14 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
         {
             if (roomTypeId != null)
             {
-                chaos += SanctumValues.RoomValue(Settings.GetRoomTier(roomTypeId), roomAnchor);
+                chaos += SanctumValues.RoomValue(AdjustRoomTier(Settings.GetRoomTier(roomTypeId), roomTypeId, floor), roomAnchor);
             }
         }
 
         var hardBlocks = 0;
         if (room.Data?.RoomEffect?.ReadableName is { } effectName)
         {
-            var tier = Settings.GetAfflictionTier(effectName);
+            var tier = AdjustAfflictionTier(Settings.GetAfflictionTier(effectName), effectName, floor);
             if (SanctumValues.IsHardBlock(tier))
             {
                 hardBlocks = 1;
@@ -1800,9 +1848,12 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
     // The three axes run on scales of different lengths now, so each is mapped onto the
     // nine colours rather than indexing them directly. Afflictions start at neutral and
     // only ever get worse, since none of them is worth having.
+    // Coloured on the adjusted tier, not the assigned one, so a room the run type has
+    // made better or worse reads that way on the map instead of only in the route.
     private Color GetAfflictionColor(string effectName)
     {
-        var tier = Settings.GetAfflictionTier(effectName);
+        var floor = BetterSanctumTrackerSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix);
+        var tier = AdjustAfflictionTier(Settings.GetAfflictionTier(effectName), effectName, floor);
         return GetTierColor(4 + (int)Math.Round(tier * 4.0 / SanctumValues.AfflictionTierMax));
     }
 
@@ -1810,7 +1861,8 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
     // to rewards alone.
     private Color GetRoomColor(string roomTypeId)
     {
-        var tier = Settings.GetRoomTier(roomTypeId);
+        var floor = BetterSanctumTrackerSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix);
+        var tier = AdjustRoomTier(Settings.GetRoomTier(roomTypeId), roomTypeId, floor);
         return GetTierColor(1 + (int)Math.Round(tier * 7.0 / SanctumValues.RoomTierMax));
     }
 

@@ -221,9 +221,12 @@ public class BetterSanctumTrackerSettings : ISettings
                     profile.RunType = runType;
                 }
 
-                Hint("Both relics duplicate the final reward, so either marks the offers not worth taking." +
-                     "\n\nHour of Divinity blocks boons: BoonFountain drops to neutral and the early Treasure and Merchant bias is dropped." +
-                     "\nGilded Chalice blocks resolve recovery: Fountain drops to neutral. CurseFountain is never adjusted.");
+                Hint("Default applies nothing, which is the baseline to judge the others against." +
+                     "\n\nNormal is an ordinary run: Merchant gains a step on every floor, Treasure and TreasureMinor gain one on floors 1-2 while there is still a run left to spend coins in, and the afflictions that attack Aureus lose a step on floors 3-4 where coins matter less." +
+                     "\n\nBoth relics duplicate the final reward, so either also marks the offers not worth taking. They carry the Normal adjustments as well." +
+                     "\nHour of Divinity blocks boons: BoonFountain drops to worth nothing and the coin bias is dropped, since coins buy boons." +
+                     "\nGilded Chalice blocks resolve recovery: Fountain drops to worth nothing. CurseFountain is never adjusted." +
+                     "\n\nA hard-blocked affliction is never adjusted by any of them.");
 
                 // -1 for "unset" the same way the currency overrides read it, so the two
                 // fields behave alike rather than one clamping where the other clears.
@@ -526,13 +529,32 @@ public class BetterSanctumTrackerSettings : ISettings
         ["Corrupted Lockpick"] = 2,
     };
 
-    // One run type for now. Hour of Divinity and Gilded Chalice flattened a room type to
-    // neutral each, which was a tier adjustment, and tier adjustments no longer exist -
-    // rooms carry a chaos value now. They come back as value adjustments once the value
-    // system has been used enough to know what they should be worth.
-    public const int RunTypeNormal = 0;
+    // Adjustments shift a tier by a step before it is priced, rather than adding chaos, so
+    // they stay meaningful whatever the anchors are set to and however the economy moves.
+    //
+    // Default applies none of them, which is the honest baseline to judge the rest against.
+    // Normal is how a run without a duplicating relic actually plays. The two relic runs
+    // duplicate the final reward, so both also mark the offers not worth taking.
+    public const int RunTypeDefault = 0;
+    public const int RunTypeNormal = 1;
+    public const int RunTypeHourOfDivinity = 2;
+    public const int RunTypeGildedChalice = 3;
 
-    public static readonly string[] RunTypeNames = { "Normal (no adjustments)" };
+    public static readonly string[] RunTypeNames =
+    {
+        "Default (no adjustments)", "Normal", "The Hour of Divinity", "The Gilded Chalice",
+    };
+
+    // Coins stop mattering once there is little run left to spend them in, so the
+    // afflictions that attack them get cheaper on the last two floors. Read off the
+    // description rather than a second list, which cannot then fall out of step with it.
+    private static readonly HashSet<string> AureusAfflictions = AfflictionTypes
+        .Where(x => x.Item2.Contains("Aureus", StringComparison.InvariantCultureIgnoreCase))
+        .Select(x => x.Item1)
+        .ToHashSet();
+
+    public static bool AfflictionAffectsAureus(string effectName) =>
+        effectName != null && AureusAfflictions.Contains(effectName);
 
 
     // Floors are identified by the prefix on their room ids; the area name does not
@@ -579,7 +601,7 @@ public class BetterSanctumTrackerSettings : ISettings
         profile.RoomTiers = new Dictionary<string, int>(DefaultRoomTiers);
         profile.AfflictionTiers = new Dictionary<string, int>(DefaultAfflictionTiers);
         profile.HideRewardsBelowChaos = -1;
-        profile.RunType = RunTypeNormal;
+        profile.RunType = RunTypeDefault;
         profile.ScaleVersion = CurrentScaleVersion;
     }
 
@@ -639,7 +661,9 @@ public class BetterSanctumTrackerSettings : ISettings
     // Read off the active profile, so the plugin keeps reading Settings.X unchanged.
     // JsonIgnore, or Newtonsoft would write these back out alongside the profiles.
     [JsonIgnore]
-    public bool DuplicateRun => GetCurrentProfile().profile.RunType != RunTypeNormal;
+    // Only the relic runs duplicate the final reward; Normal is an ordinary run with
+    // ordinary offers.
+    public bool DuplicateRun => GetCurrentProfile().profile.RunType is RunTypeHourOfDivinity or RunTypeGildedChalice;
 
     [JsonIgnore]
     public int RunType => GetCurrentProfile().profile.RunType;
@@ -688,7 +712,7 @@ public class ProfileContent
     // current by CreateNew.
     public int ScaleVersion = 1;
 
-    public int RunType = BetterSanctumTrackerSettings.RunTypeNormal;
+    public int RunType = BetterSanctumTrackerSettings.RunTypeDefault;
 
     // Superseded by RunType. Read once by MigrateProfile, unused after.
     public bool DuplicateRun = false;
