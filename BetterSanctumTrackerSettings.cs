@@ -226,7 +226,7 @@ public class BetterSanctumTrackerSettings : ISettings
                      "\nGilded Chalice blocks resolve recovery: Fountain drops to neutral. CurseFountain is never adjusted.");
 
                 var hideCurrencyBelowTier = profile.HideCurrencyBelowTier;
-                if (ImGui.SliderInt("Hide currency below tier", ref hideCurrencyBelowTier, 0, SanctumValues.CurrencyTierMax))
+                if (ImGui.SliderInt("Hide currency below band", ref hideCurrencyBelowTier, 0, SanctumValues.CurrencyBandMax))
                 {
                     profile.HideCurrencyBelowTier = hideCurrencyBelowTier;
                 }
@@ -238,27 +238,33 @@ public class BetterSanctumTrackerSettings : ISettings
                      "\nRoom 0-10: 0 is worth the room anchor, 5 is worth nothing, 10 costs the anchor." +
                      "\nAffliction 0-6: 0 costs nothing, 5 costs the affliction anchor, 6 is never walked into unless a currency 0 lies beyond it.");
 
-                if (ImGui.TreeNode("Currency tiering"))
+                if (ImGui.TreeNode("Currency price overrides"))
                 {
-                    ImGui.TextDisabled("Rated per reward slot. Only the best slot of a room counts, and the third slot counts twice since it pays double.");
+                    ImGui.TextDisabled("A reward's band is read off what it is worth, so there is nothing to rate. Override the chaos each one is worth where you disagree with the market, or set 0 to ignore it.");
                     ImGui.InputTextWithHint("##CurrencyFilter", "Filter", ref currencyFilter, 100);
                     var (currencyTypes, fromGameFiles) = GetKnownCurrencyTypes();
                     ImGui.TextDisabled($"{currencyTypes.Count} currencies ({(fromGameFiles ? "from game files" : "fallback list")})");
+                    ImGui.TextDisabled("Blank or -1 leaves the price alone. The value is per unit; the quantity of the slot is applied on top.");
+
                     foreach (var type in currencyTypes)
                     {
-                        for (int order = 0; order < 3; order++)
+                        if (!MatchesFilter(type, currencyFilter))
                         {
-                            // Filter against the full label so the slot words are searchable too
-                            var label = $"{type} ({order switch { 0 => "first", 1 => "second", 2 => "third" }})";
-                            if (!MatchesFilter(label, currencyFilter))
-                            {
-                                continue;
-                            }
+                            continue;
+                        }
 
-                            var currentValue = GetCurrencyTier(type, order);
-                            if (ImGui.SliderInt(label, ref currentValue, 0, SanctumValues.CurrencyTierMax))
+                        // -1 rather than 0 for "no override", since 0 is the useful value
+                        // that says to ignore a currency entirely.
+                        var current = profile.CurrencyUnitPriceOverrides.GetValueOrDefault(type, -1);
+                        if (ImGui.InputInt(type, ref current))
+                        {
+                            if (current < 0)
                             {
-                                profile.CurrencyTiers[$"{type}/{order}"] = currentValue;
+                                profile.CurrencyUnitPriceOverrides.Remove(type);
+                            }
+                            else
+                            {
+                                profile.CurrencyUnitPriceOverrides[type] = current;
                             }
                         }
                     }
@@ -362,12 +368,8 @@ public class BetterSanctumTrackerSettings : ISettings
     // Currency says what you are after and is priced from the price plugin; rooms and
     // afflictions are priced from an anchor. Only two positions are absolute: a currency
     // at 0 is taken whatever stands in the way, an affliction at 6 is never walked into.
-    public const int PrioritizeValue = SanctumValues.CurrencyMustTake;
-
-    // Where nothing has been rated. A currency counts its price in full, a room is worth
-    // nothing either way, and an affliction sits mid-scale - an unrated affliction is a
-    // cost of unknown size rather than a free one.
-    public const int CurrencyDefaultTier = 2;
+    // Where nothing has been rated. A room is worth nothing either way, and an affliction
+    // sits mid-scale - an unrated affliction is a cost of unknown size, not a free one.
     public const int RoomDefaultTier = SanctumValues.RoomNeutralTier;
     public const int AfflictionDefaultTier = 3;
 
@@ -442,26 +444,6 @@ public class BetterSanctumTrackerSettings : ISettings
         return quantity == 1 ? 2 : quantity;
     }
 
-    // A bare name applies to every reward slot; a "name/slot" key overrides one slot.
-    // Tier is intent, not value - the price says what a reward is worth. So only the ends
-    // carry weight by default: 0 is taken whatever stands in the way, 4 is ignored
-    // entirely, and 1 to 3 all count their full price until you bias them.
-    public static readonly IReadOnlyDictionary<string, int> DefaultCurrencyTiers = new Dictionary<string, int>
-    {
-        ["Mirrors of Kalandra"] = 0,
-        ["Divine Orbs"] = 1,
-        ["Fracturing Orbs"] = 1,
-        ["Volatile Vaal Orbs"] = 1,
-        ["Sacred Orbs"] = 1,
-        ["Exalted Orbs"] = 2,
-        ["Orbs of Annulment"] = 2,
-        ["Ancient Orbs"] = 2,
-        ["Chromatic Orbs"] = 2,
-        ["Stacked Decks"] = 2,
-        ["Veiled Chaos Orbs"] = 2,
-        ["Divine Vessels"] = 2,
-        ["Chaos Orbs"] = 3,
-    };
 
     // Fight rooms are graded on the resolve they tend to cost, reward rooms on what they
     // hand you, and 5 is worth nothing either way. Boss and Final sit at neutral
@@ -565,7 +547,7 @@ public class BetterSanctumTrackerSettings : ISettings
         return prefix != null && FloorsByRoomPrefix.TryGetValue(prefix, out var floor) ? floor : 0;
     }
 
-    public const int CurrentScaleVersion = 7;
+    public const int CurrentScaleVersion = 8;
 
     // Version 7 moved all three axes onto chaos, and onto scales of different lengths:
     // currency 0-4, rooms 0-10, afflictions 0-6. A tier from the old 0-8 scale does not
@@ -580,10 +562,10 @@ public class BetterSanctumTrackerSettings : ISettings
             return;
         }
 
-        profile.CurrencyTiers = new Dictionary<string, int>(DefaultCurrencyTiers);
+        profile.CurrencyUnitPriceOverrides = new Dictionary<string, int>();
         profile.RoomTiers = new Dictionary<string, int>(DefaultRoomTiers);
         profile.AfflictionTiers = new Dictionary<string, int>(DefaultAfflictionTiers);
-        profile.HideCurrencyBelowTier = SanctumValues.CurrencyTierMax;
+        profile.HideCurrencyBelowTier = SanctumValues.CurrencyBandMax;
         profile.RunType = RunTypeNormal;
         profile.ScaleVersion = CurrentScaleVersion;
     }
@@ -627,13 +609,18 @@ public class BetterSanctumTrackerSettings : ISettings
         return GetCurrentProfile().profile.RoomTiers.GetValueOrDefault(type ?? "", RoomDefaultTier);
     }
 
-    public int GetCurrencyTier(string type, int order)
+    // Zero means "worth nothing", which is how a currency is ignored, so absent has to be
+    // a different answer - the caller falls back to the market price.
+    public bool TryGetCurrencyOverride(string type, out double chaos)
     {
-        var currencyTiers = GetCurrentProfile().profile.CurrencyTiers;
-        return currencyTiers.TryGetValue($"{type ?? ""}/{order}", out var tier) ||
-               currencyTiers.TryGetValue(type ?? "", out tier)
-            ? tier
-            : CurrencyDefaultTier;
+        if (type != null && GetCurrentProfile().profile.CurrencyUnitPriceOverrides.TryGetValue(type, out var value) && value >= 0)
+        {
+            chaos = value;
+            return true;
+        }
+
+        chaos = 0;
+        return false;
     }
 
     // Read off the active profile, so the plugin keeps reading Settings.X unchanged.
@@ -689,10 +676,11 @@ public class ProfileContent
 
     // Superseded by RunType. Read once by MigrateProfile, unused after.
     public bool DuplicateRun = false;
-    public int HideCurrencyBelowTier = SanctumValues.CurrencyTierMax;
-
+    public int HideCurrencyBelowTier = SanctumValues.CurrencyBandMax;
+    // Chaos per unit where you disagree with the market. Absent means use the price;
+    // zero means the reward is worth nothing and should not pull a route.
     [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
-    public Dictionary<string, int> CurrencyTiers = new(BetterSanctumTrackerSettings.DefaultCurrencyTiers);
+    public Dictionary<string, int> CurrencyUnitPriceOverrides = new();
 
     [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
     public Dictionary<string, int> RoomTiers = new(BetterSanctumTrackerSettings.DefaultRoomTiers);
@@ -764,12 +752,11 @@ public class RoutingSettings
     // something and rooms and afflictions keep scoring against each other.
     public RangeNode<int> DivineChaosFallback { get; set; } = new RangeNode<int>(400, 1, 100000);
 
-    // Bias, as a percentage of the price. Tier 0 is a must-take and tier 4 is ignored, so
-    // only the three in between are worth a multiplier - and at 100 each they simply count
-    // what they are worth, which is the point of pricing them in the first place.
-    public RangeNode<int> Tier1MultiplierPercent { get; set; } = new RangeNode<int>(100, 0, 500);
-    public RangeNode<int> Tier2MultiplierPercent { get; set; } = new RangeNode<int>(100, 0, 500);
-    public RangeNode<int> Tier3MultiplierPercent { get; set; } = new RangeNode<int>(100, 0, 500);
+    // Past this much chaos a reward is worth walking through an affliction that would
+    // otherwise be refused outright. It replaces the must-take rating: 500 is five divine,
+    // the same line the top colour band is drawn at. Zero switches the override off, and
+    // then nothing gets past a hard block.
+    public RangeNode<int> MustTakePercentOfDivine { get; set; } = new RangeNode<int>(500, 0, 5000);
 }
 
 [Submenu(CollapsedByDefault = true)]

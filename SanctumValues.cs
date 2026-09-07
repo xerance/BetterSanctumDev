@@ -12,12 +12,12 @@ namespace BetterSanctum;
 // room types and below afflictions at the same time, which no single value did.
 public static class SanctumValues
 {
-    // Currency: 0 must-take, 4 ignored. The tiers between are what you are after in
-    // descending order of intent, and by default they all count their full price - the
-    // multipliers exist to bias that, not to express value, which the price already does.
-    public const int CurrencyMustTake = 0;
-    public const int CurrencyIgnore = 4;
-    public const int CurrencyTierMax = 4;
+    // Currency has no tier list any more. A reward's band is read straight off what it is
+    // worth, because that is all a tier was ever standing in for, and rating a hundred
+    // currencies by hand to say what a price already says was the bulk of the settings.
+    // What is left is an override on the price of a named currency, for where you
+    // disagree with the market or want something ignored.
+    public const int CurrencyBandMax = 5;
 
     // Room: 0 is worth the anchor, 5 is worth nothing, 10 costs the anchor. Symmetric,
     // because a room type can be worth seeking as easily as worth avoiding.
@@ -52,27 +52,28 @@ public static class SanctumValues
 
     public static bool IsHardBlock(int afflictionTier) => afflictionTier >= AfflictionHardBlockTier;
 
-    // Reward text is coloured by what it is worth rather than by the tier you assigned,
-    // so the map reads as prices at a glance and the tiers stay free to mean intent.
-    // Thresholds are in divine.
-    private static readonly double[] ColourBandsInDivine = { 5.0, 1.0, 0.5, 0.3, 0.1 };
+    // One set of bands does both jobs: it colours the reward on the map and it is the
+    // reward's tier. Thresholds are in divine, so they hold their meaning as prices move.
+    //
+    //   0  5d+      1  1d+      2  0.5d+      3  0.3d+      4  0.1d+      5  the rest
+    private static readonly double[] BandsInDivine = { 5.0, 1.0, 0.5, 0.3, 0.1 };
 
-    public static int ColourBandForValue(double chaos, double divineChaos)
+    public static int ValueBand(double chaos, double divineChaos)
     {
         if (divineChaos <= 0)
         {
-            return ColourBandsInDivine.Length;
+            return CurrencyBandMax;
         }
 
         var divine = chaos / divineChaos;
-        for (var band = 0; band < ColourBandsInDivine.Length; band++)
+        for (var band = 0; band < BandsInDivine.Length; band++)
         {
-            if (divine >= ColourBandsInDivine[band])
+            if (divine >= BandsInDivine[band])
             {
                 return band;
             }
         }
 
-        return ColourBandsInDivine.Length;
+        return CurrencyBandMax;
     }
 }

@@ -290,10 +290,10 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
     // agrees with the route instead of showing a unit price beside it.
     //
     // Quantity is measured rather than read: nothing in room data exposes it.
-    private string DescribeRewardPrice(SanctumDeferredRewardCategory reward, int order, int assignedTier)
+    private string DescribeRewardPrice(SanctumDeferredRewardCategory reward, int order, int band)
     {
-        // A currency you have said to ignore is not worth the clutter of a price
-        if (!Settings.MapDisplay.ShowRewardPrices || assignedTier >= SanctumValues.CurrencyIgnore)
+        // Priced only where the reward is shown at all, so the two stay in step
+        if (!Settings.MapDisplay.ShowRewardPrices || band > Settings.HideCurrencyBelowTier)
         {
             return "";
         }
@@ -690,7 +690,7 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
                         Slot = order,
                         Currency = reward.CurrencyName,
                         Quantity = BetterSanctumTrackerSettings.GetRewardQuantity(reward.CurrencyName, order, floor.Floor),
-                        Tier = Settings.GetCurrencyTier(reward.CurrencyName, order),
+                        Tier = RewardBand(reward, order, floor.Floor),
                     });
                 }
 
@@ -817,7 +817,8 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
                     Text = text.Trim(),
                     Currency = currency,
                     Quantity = quantity,
-                    Tier = Settings.GetCurrencyTier(currency, slot),
+                    // Priced from the window text rather than the map, since a deal has no map entry
+                    Tier = SanctumValues.ValueBand(UnitPriceForCurrency(currency) * quantity, DivineChaos()),
                 });
             }
 
@@ -1087,7 +1088,7 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
                 {
                     var room = roomLayer[roomIndex];
                     (List<int> CurrencyTier, int? RoomTier, int? AfflictionTier) thisRoomData = (
-                        room.GetRoomsWithOrder().Select(x => Settings.GetCurrencyTier(x.room.CurrencyName, x.order)).ToList(),
+                        room.GetRoomsWithOrder().Select(x => RewardBand(x.room, x.order, BetterSanctumTrackerSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix))).ToList(),
                         room.Data.RewardRoom?.RoomType?.Id switch
                         {
                             null => null,
@@ -1348,11 +1349,12 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
                     foreach (var reward in rewards)
                     {
                         var currencyName = reward.room.CurrencyName;
-                        var tier = Settings.GetCurrencyTier(currencyName, reward.order);
-                        if (tier <= Settings.HideCurrencyBelowTier)
+                        var rewardFloor = BetterSanctumTrackerSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix);
+                        var rewardChaos = RewardChaos(reward.room, reward.order, rewardFloor);
+                        var band = SanctumValues.ValueBand(rewardChaos, DivineChaos());
+                        if (band <= Settings.HideCurrencyBelowTier)
                         {
-                            var rewardChaos = RewardChaos(reward.room, reward.order, BetterSanctumTrackerSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix));
-                            textSize = DrawTextWithBackground(currencyName + DescribeRewardPrice(reward.room, reward.order, tier), lineLocation, GetRewardColor(rewardChaos), Settings.MapDisplay.BackgroundColor);
+                            textSize = DrawTextWithBackground(currencyName + DescribeRewardPrice(reward.room, reward.order, band), lineLocation, GetRewardColor(rewardChaos), Settings.MapDisplay.BackgroundColor);
                             lineLocation.Y += textSize.Y;
                         }
                     }
@@ -1514,7 +1516,7 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
                     }
 
                     var fromCategory = FindCategoryBaseType(currencyName);
-                    lines.Add($"PRICING \"{currencyName}\" tier={Settings.GetCurrencyTier(currencyName, order)} " +
+                    lines.Add($"PRICING \"{currencyName}\" " +
                               $"rewardBaseType={(reward.BaseType == null ? "<null>" : $"\"{reward.BaseType.BaseName}\"")} " +
                               $"rewardPrice={PriceOf(reward.BaseType)} " +
                               $"categoryBaseType={(fromCategory == null ? "<no match>" : $"\"{fromCategory.BaseName}\"")} " +
@@ -1648,31 +1650,32 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
 
     private double AnchorChaos(int percentOfDivine) => DivineChaos() * percentOfDivine / 100.0;
 
-    // Tier is intent; the price is value. So this only ever scales what a reward is
-    // already worth - 0 is handled as a must-take before it gets here, and 4 is nothing.
-    private double CurrencyMultiplier(int tier)
-    {
-        return tier switch
-        {
-            1 => Settings.Routing.Tier1MultiplierPercent.Value / 100.0,
-            2 => Settings.Routing.Tier2MultiplierPercent.Value / 100.0,
-            3 => Settings.Routing.Tier3MultiplierPercent.Value / 100.0,
-            SanctumValues.CurrencyIgnore => 0,
-            _ => 1,
-        };
-    }
-
     // What one offer pays, in chaos. Quantity is the measured figure for that slot, so the
-    // last slot on floor 4 is worth double. An unpriced currency falls back to the unknown
-    // reward figure rather than zero, or a currency the price plugin has never heard of
-    // would read as worthless.
+    // last slot on floor 4 is worth double.
+    //
+    // An override wins over the market outright, including an override of zero, which is
+    // how a currency is told to pull no route at all. Only where there is neither an
+    // override nor a price does the unknown reward figure stand in - a currency the price
+    // plugin has never heard of should not read as worthless.
     private double RewardChaos(SanctumDeferredRewardCategory reward, int order, int floor)
     {
         var quantity = BetterSanctumTrackerSettings.GetRewardQuantity(reward?.CurrencyName, order, floor);
+        if (Settings.TryGetCurrencyOverride(reward?.CurrencyName, out var overridden))
+        {
+            return overridden * quantity;
+        }
+
         var unit = UnitPriceFor(reward);
         return unit > 0
             ? unit * quantity
             : AnchorChaos(Settings.Routing.UnknownRewardPercentOfDivine.Value);
+    }
+
+    // The band a reward falls in, read off what it is worth. This is the tier now: there
+    // is no list to rate, and the same bands colour the text on the map.
+    private int RewardBand(SanctumDeferredRewardCategory reward, int order, int floor)
+    {
+        return SanctumValues.ValueBand(RewardChaos(reward, order, floor), DivineChaos());
     }
 
     // What a room's rewards are worth when the map does not list any. A deal hides its
@@ -1706,20 +1709,23 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
         var best = 0.0;
         var any = false;
         var mustTake = false;
+        var mustTakeAt = AnchorChaos(Settings.Routing.MustTakePercentOfDivine.Value);
         foreach (var (reward, order) in room.GetRoomsWithOrder())
         {
             any = true;
-            var tier = Settings.GetCurrencyTier(reward.CurrencyName, order);
             var chaos = RewardChaos(reward, order, floor);
-            if (tier == SanctumValues.CurrencyMustTake)
+
+            // A must-take is now a price rather than a rating: past this much chaos a
+            // reward is worth walking through an affliction you would otherwise refuse.
+            // Zero switches that off, since every reward would otherwise qualify.
+            if (mustTakeAt > 0 && chaos >= mustTakeAt)
             {
                 mustTake = true;
             }
 
-            var worth = chaos * CurrencyMultiplier(tier);
-            if (worth > best)
+            if (chaos > best)
             {
-                best = worth;
+                best = chaos;
             }
         }
 
@@ -1778,7 +1784,7 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
 
     // Rewards are coloured by what they are worth rather than by the tier you gave them,
     // so the map reads as prices at a glance and the tier stays free to mean intent.
-    private Color GetRewardColor(double chaos) => GetTierColor(SanctumValues.ColourBandForValue(chaos, DivineChaos()));
+    private Color GetRewardColor(double chaos) => GetTierColor(SanctumValues.ValueBand(chaos, DivineChaos()));
 
     private ColorNode GetTierColor(int value)
     {
