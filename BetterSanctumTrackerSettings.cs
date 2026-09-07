@@ -225,13 +225,16 @@ public class BetterSanctumTrackerSettings : ISettings
                      "\n\nHour of Divinity blocks boons: BoonFountain drops to neutral and the early Treasure and Merchant bias is dropped." +
                      "\nGilded Chalice blocks resolve recovery: Fountain drops to neutral. CurseFountain is never adjusted.");
 
+                // -1 for "unset" the same way the currency overrides read it, so the two
+                // fields behave alike rather than one clamping where the other clears.
                 var hideRewardsBelowChaos = profile.HideRewardsBelowChaos;
                 if (ImGui.InputInt("Hide rewards worth less than (chaos)", ref hideRewardsBelowChaos))
                 {
-                    profile.HideRewardsBelowChaos = Math.Max(hideRewardsBelowChaos, 0);
+                    profile.HideRewardsBelowChaos = hideRewardsBelowChaos < 0 ? -1 : hideRewardsBelowChaos;
                 }
 
-                Hint("Rewards worth less than this are left out of the room text on the map. Set 0 to show everything. It does not affect routing - a hidden reward is still scored." +
+                Hint($"Rewards worth less than this are left out of the room text on the map. It does not affect routing - a hidden reward is still scored." +
+                     $"\n-1 uses the default of {DefaultHideRewardsBelowChaos}c, and 0 shows everything." +
                      "\nChaos rather than a band, so it stays where you put it. It does not follow the divine price, so it is worth revisiting when the economy moves.");
 
                 ImGui.TextDisabled("Every axis is scored in chaos. Rewards are priced; rooms and afflictions are priced from an anchor set in Routing.");
@@ -575,7 +578,7 @@ public class BetterSanctumTrackerSettings : ISettings
         profile.CurrencyUnitPriceOverrides = new Dictionary<string, int>();
         profile.RoomTiers = new Dictionary<string, int>(DefaultRoomTiers);
         profile.AfflictionTiers = new Dictionary<string, int>(DefaultAfflictionTiers);
-        profile.HideRewardsBelowChaos = DefaultHideRewardsBelowChaos;
+        profile.HideRewardsBelowChaos = -1;
         profile.RunType = RunTypeNormal;
         profile.ScaleVersion = CurrentScaleVersion;
     }
@@ -642,7 +645,10 @@ public class BetterSanctumTrackerSettings : ISettings
     public int RunType => GetCurrentProfile().profile.RunType;
 
     [JsonIgnore]
-    public int HideRewardsBelowChaos => GetCurrentProfile().profile.HideRewardsBelowChaos;
+    // -1 means unset, and resolves to the shipped default here rather than being written
+    // into the profile, so a change of default reaches anyone who never set one.
+    public int HideRewardsBelowChaos =>
+        GetCurrentProfile().profile.HideRewardsBelowChaos is var value && value >= 0 ? value : DefaultHideRewardsBelowChaos;
 
     public int GetAfflictionTier(string type)
     {
@@ -686,7 +692,7 @@ public class ProfileContent
 
     // Superseded by RunType. Read once by MigrateProfile, unused after.
     public bool DuplicateRun = false;
-    public int HideRewardsBelowChaos = BetterSanctumTrackerSettings.DefaultHideRewardsBelowChaos;
+    public int HideRewardsBelowChaos = -1;
     // Chaos per unit where you disagree with the market. Absent means use the price;
     // zero means the reward is worth nothing and should not pull a route.
     [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
