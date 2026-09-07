@@ -314,11 +314,10 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
         var floor = BetterSanctumTrackerSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix);
         var quantity = BetterSanctumTrackerSettings.GetRewardQuantity(reward?.CurrencyName, order, floor);
 
-        // The count is spelled out where it is not one, so a doubled last slot reads as a
-        // doubled reward rather than as a price that moved for no reason.
-        return quantity > 1
-            ? $" ({quantity}x {FormatPrice(chaos * quantity)})"
-            : $" ({FormatPrice(chaos)})";
+        // Always the count, then what that many come to. Showing it only where it was not
+        // one left the same currency reading two ways down a floor, and a doubled last
+        // slot looked like a price that had moved rather than a reward that had doubled.
+        return $" ({quantity}x = {FormatPrice(chaos * quantity)})";
     }
 
     // Returns the size whether or not it draws, so a suppressed line still advances the
