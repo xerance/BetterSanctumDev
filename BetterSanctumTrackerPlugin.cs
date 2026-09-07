@@ -1785,12 +1785,15 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
             return tier;
         }
 
-        // Hour of Divinity has no boons to buy, so coins are worth less and the rooms that
-        // pay them are not worth going out of the way for. CurseFountain is never adjusted.
+        // Early only: coins are worth having while there is still a run left to spend them
+        // in, and by the last floors the rooms that pay them have little left to buy.
+        //
+        // Hour of Divinity has no boons to buy at all, so coins are worth less throughout
+        // and none of this applies. CurseFountain is never adjusted.
         var boonsAreWorthBuying = runType != BetterSanctumTrackerSettings.RunTypeHourOfDivinity;
         var favoured = boonsAreWorthBuying &&
-                       (roomTypeId == "Merchant" ||
-                        floor <= 2 && roomTypeId is "Treasure" or "TreasureMinor");
+                       floor <= 2 &&
+                       roomTypeId is "Merchant" or "Treasure" or "TreasureMinor";
 
         return favoured ? Math.Max(tier - 1, 0) : tier;
     }

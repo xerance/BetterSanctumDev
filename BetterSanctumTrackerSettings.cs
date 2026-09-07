@@ -222,7 +222,7 @@ public class BetterSanctumTrackerSettings : ISettings
                 }
 
                 Hint("Default applies nothing, which is the baseline to judge the others against." +
-                     "\n\nNormal is an ordinary run: Merchant gains a step on every floor, Treasure and TreasureMinor gain one on floors 1-2 while there is still a run left to spend coins in, and the afflictions that attack Aureus lose a step on floors 3-4 where coins matter less." +
+                     "\n\nNormal is an ordinary run: Merchant, Treasure and TreasureMinor each gain a step on floors 1-2, while there is still a run left to spend coins in, and the afflictions that attack Aureus lose a step on floors 3-4 where coins matter less." +
                      "\n\nBoth relics duplicate the final reward, so either also marks the offers not worth taking. They carry the Normal adjustments as well." +
                      "\nHour of Divinity blocks boons: BoonFountain drops to worth nothing and the coin bias is dropped, since coins buy boons." +
                      "\nGilded Chalice blocks resolve recovery: Fountain drops to worth nothing. CurseFountain is never adjusted." +
