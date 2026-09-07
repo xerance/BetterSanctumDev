@@ -1373,7 +1373,7 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
 
                         // A display filter only - a reward too cheap to write down is
                         // still scored, since a route is worth the sum of what is on it.
-                        if (rewardChaos >= Settings.HideRewardsBelowChaos)
+                        if (rewardChaos >= HideRewardsBelow())
                         {
                             textSize = DrawTextWithBackground(currencyName + DescribeRewardPrice(reward.room, reward.order), lineLocation, GetRewardColor(rewardChaos), Settings.MapDisplay.BackgroundColor);
                             lineLocation.Y += textSize.Y;
@@ -1670,6 +1670,17 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
     }
 
     private double AnchorChaos(int percentOfDivine) => DivineChaos() * percentOfDivine / 100.0;
+
+    // A figure you typed is absolute chaos and stays put; unset follows the divine price
+    // like every other anchor, so the map does not fill with noise as the economy inflates
+    // past a threshold nobody thought to revisit.
+    private double HideRewardsBelow()
+    {
+        var configured = Settings.HideRewardsBelowChaos;
+        return configured >= 0
+            ? configured
+            : AnchorChaos(BetterSanctumTrackerSettings.DefaultHidePercentOfDivine);
+    }
 
     // What one offer pays, in chaos. Quantity is the measured figure for that slot, so the
     // last slot on floor 4 is worth double.

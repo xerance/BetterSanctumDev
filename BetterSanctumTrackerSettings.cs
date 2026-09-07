@@ -233,9 +233,9 @@ public class BetterSanctumTrackerSettings : ISettings
                     profile.HideRewardsBelowChaos = hideRewardsBelowChaos < 0 ? -1 : hideRewardsBelowChaos;
                 }
 
-                Hint($"Rewards worth less than this are left out of the room text on the map. It does not affect routing - a hidden reward is still scored." +
-                     $"\n-1 uses the default of {DefaultHideRewardsBelowChaos}c, and 0 shows everything." +
-                     "\nChaos rather than a band, so it stays where you put it. It does not follow the divine price, so it is worth revisiting when the economy moves.");
+                Hint("Rewards worth less than this are left out of the room text on the map. It does not affect routing - a hidden reward is still scored." +
+                     $"\n-1 follows the divine price, at {DefaultHidePercentOfDivine}% of one, so it moves as the economy does. 0 shows everything." +
+                     "\nA figure you type is absolute chaos and stays where you put it, so it is worth revisiting when prices move.");
 
                 ImGui.TextDisabled("Every axis is scored in chaos. Rewards are priced; rooms and afflictions are priced from an anchor set in Routing.");
                 Hint("Currency 0-4: 0 is taken whatever stands in the way, 4 is ignored, 1-3 all count their full price until you bias them in Routing." +
@@ -558,7 +558,7 @@ public class BetterSanctumTrackerSettings : ISettings
     //
     // Absolute rather than a fraction of a divine, because it is a display filter you set
     // once and want to stay where you put it - worth revisiting when the economy moves.
-    public const int DefaultHideRewardsBelowChaos = 40;
+    public const int DefaultHidePercentOfDivine = 10;
 
     public const int CurrentScaleVersion = 8;
 
@@ -645,10 +645,10 @@ public class BetterSanctumTrackerSettings : ISettings
     public int RunType => GetCurrentProfile().profile.RunType;
 
     [JsonIgnore]
-    // -1 means unset, and resolves to the shipped default here rather than being written
-    // into the profile, so a change of default reaches anyone who never set one.
-    public int HideRewardsBelowChaos =>
-        GetCurrentProfile().profile.HideRewardsBelowChaos is var value && value >= 0 ? value : DefaultHideRewardsBelowChaos;
+    // Raw, with -1 meaning unset. The plugin resolves that against the live divine price
+    // rather than a figure baked in here, so the default moves with the economy the same
+    // way every other anchor does.
+    public int HideRewardsBelowChaos => GetCurrentProfile().profile.HideRewardsBelowChaos;
 
     public int GetAfflictionTier(string type)
     {
