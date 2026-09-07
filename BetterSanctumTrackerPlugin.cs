@@ -1343,11 +1343,24 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
 
                 var textTopLeft = room.GetClientRectCache.TopLeft.ToVector2Num();
                 var lineLocation = textTopLeft;
-                var textSize = DrawTextWithBackground(fightRoomId ?? "??", lineLocation, GetRoomColor(fightRoomId), Settings.MapDisplay.BackgroundColor);
-                lineLocation.Y += textSize.Y;
                 var rewardRoomId = room.Data.RewardRoom?.RoomType?.Id;
-                textSize = DrawTextWithBackground($"->{rewardRoomId ?? "??"}", lineLocation, GetRoomColor(rewardRoomId), Settings.MapDisplay.BackgroundColor);
-                lineLocation.Y += textSize.Y;
+
+                // A room reads as nothing both before it is revealed and after it is
+                // behind you, and neither is worth a line of text - the room's own art
+                // already says which. Written as two independent lines rather than one
+                // with a placeholder, so a room that knows half of itself still says so.
+                if (fightRoomId != null)
+                {
+                    var fightSize = DrawTextWithBackground(fightRoomId, lineLocation, GetRoomColor(fightRoomId), Settings.MapDisplay.BackgroundColor);
+                    lineLocation.Y += fightSize.Y;
+                }
+
+                Vector2 textSize;
+                if (rewardRoomId != null)
+                {
+                    textSize = DrawTextWithBackground($"->{rewardRoomId}", lineLocation, GetRoomColor(rewardRoomId), Settings.MapDisplay.BackgroundColor);
+                    lineLocation.Y += textSize.Y;
+                }
 
                 if (room.GetRoomsWithOrder() is { Count: > 0 } rewards)
                 {
