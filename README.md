@@ -52,7 +52,7 @@ ETH: 0x3A37B3f57453555C2ceabb1a2A4f55E0eB969105
 Prices are read over the ExileApi plugin bridge, by asking for the method
 `NinjaPrice.GetBaseItemTypeValue` and handing it a base item type. What matters is that
 *something* has registered that name, not which plugin did it. Both
-[Ninja Price](https://github.com/exApiTools/Ninja-Price) and
+[Ninja Price](https://github.com/exCore2/NinjaPricer) and
 [Get-Chaos-Value](https://github.com/exApiTools/Get-Chaos-Value) register it, so either
 one satisfies the requirement and there is no reason to run both. The lookup is resolved
 lazily and retried every five seconds, since the price plugin may well initialise after
