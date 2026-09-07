@@ -548,10 +548,14 @@ public class BetterSanctumTrackerSettings : ISettings
         return prefix != null && FloorsByRoomPrefix.TryGetValue(prefix, out var floor) ? floor : 0;
     }
 
-    // Roughly a third of a divine while one is around 400 chaos. Absolute rather than a
-    // fraction of a divine, because it is a display filter you set once and want to stay
-    // where you put it - worth revisiting when the economy moves.
-    public const int DefaultHideRewardsBelowChaos = 120;
+    // A tenth of a divine while one is around 400 chaos, which is the bottom colour band
+    // and little more than a floor under the noise. Deliberately low: silencing one
+    // currency is what an override of zero is for, and a default that hid by price would
+    // take that decision away from every currency at once.
+    //
+    // Absolute rather than a fraction of a divine, because it is a display filter you set
+    // once and want to stay where you put it - worth revisiting when the economy moves.
+    public const int DefaultHideRewardsBelowChaos = 40;
 
     public const int CurrentScaleVersion = 8;
 
