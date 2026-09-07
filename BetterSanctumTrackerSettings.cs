@@ -198,7 +198,7 @@ public class BetterSanctumTrackerSettings : ISettings
                     CurrentProfile = newProfileName;
                 }
 
-                Hint("A profile holds the tier values, the run type and the currency cutoff. Colours and display settings are shared across all profiles.");
+                Hint("A profile holds the room and affliction tiers, the currency price overrides, the run type and the hide threshold. Colours and display settings are shared across all profiles.");
 
                 // Deleting the last profile would leave nothing to fall back to
                 if (Profiles.Count > 1)
@@ -224,7 +224,7 @@ public class BetterSanctumTrackerSettings : ISettings
                 Hint("Default applies nothing, which is the baseline to judge the others against." +
                      "\n\nNormal is an ordinary run: Merchant, Treasure and TreasureMinor each gain a step on floors 1-2, while there is still a run left to spend coins in, and the afflictions that attack Aureus lose a step on floors 3-4 where coins matter less." +
                      "\n\nBoth relics duplicate the final reward, so either also marks the offers not worth taking. They carry the Normal adjustments as well." +
-                     "\nHour of Divinity blocks boons: BoonFountain drops to worth nothing and the coin bias is dropped, since coins buy boons." +
+                     "\nHour of Divinity blocks boons: BoonFountain drops to worth nothing and the early room bias goes with it, since coins buy boons. The Aureus affliction discount still applies." +
                      "\nGilded Chalice blocks resolve recovery: Fountain drops to worth nothing. CurseFountain is never adjusted." +
                      "\n\nA hard-blocked affliction is never adjusted by any of them.");
 
@@ -241,9 +241,9 @@ public class BetterSanctumTrackerSettings : ISettings
                      "\nA figure you type is absolute chaos and stays where you put it, so it is worth revisiting when prices move.");
 
                 ImGui.TextDisabled("Every axis is scored in chaos. Rewards are priced; rooms and afflictions are priced from an anchor set in Routing.");
-                Hint("Currency 0-4: 0 is taken whatever stands in the way, 4 is ignored, 1-3 all count their full price until you bias them in Routing." +
-                     "\nRoom 0-10: 0 is worth the room anchor, 5 is worth nothing, 10 costs the anchor." +
-                     "\nAffliction 0-6: 0 costs nothing, 5 costs the affliction anchor, 6 is never walked into unless a currency 0 lies beyond it.");
+                Hint("Currency has no tiers. A reward is worth its price times the quantity of the slot, and its band is read off that figure, so the only setting is the price override below." +
+                     "\nRoom 0-10: 0 is worth the room anchor, 5 is worth nothing, 10 costs the anchor. Unrated room types sit at 5." +
+                     "\nAffliction 0-6: 0 costs nothing, 5 costs the affliction anchor, 6 is never walked into unless a reward past Must take at lies beyond it. Unrated afflictions sit at 3, since an unrated one is a cost of unknown size rather than a free one.");
 
                 if (ImGui.TreeNode("Currency price overrides"))
                 {
@@ -763,9 +763,10 @@ public class RoutingSettings
     [JsonIgnore]
     public CustomNode Help { get; set; } = SettingsHelp.Block(
         "Picks one room per layer from where you stand to the boss and frames it. Routes are scored in chaos: the reward you would take, less what the rooms and afflictions on the way cost.",
-        "Rewards are priced from the price plugin and multiplied by the measured quantity for their slot, so the third slot on floor 4 counts double. Without a price plugin nothing has a price and only the anchors below score.",
+        "Rewards are priced from the price plugin and multiplied by the measured quantity for their slot, so a single-item reward in the third slot on floor 4 counts double. Any plugin registering the NinjaPrice.GetBaseItemTypeValue bridge method will do - Ninja Price and Get-Chaos-Value both answer to it.",
+        "With no price plugin at all, the divine falls back to the figure below and every reward reads as the unknown reward figure, so rewards stop separating routes and only rooms and afflictions do. Price the ones you care about by hand with the currency overrides.",
         "Rooms and afflictions have no price of their own, so they are set as a percentage of a divine and move with it. A room at tier 0 is worth the room anchor, tier 5 nothing, tier 10 costs the anchor. An affliction at tier 5 costs the affliction anchor, and tier 6 is never walked into.",
-        "Two things are absolute and are compared before any chaos: a currency at tier 0 is routed to through anything, including an affliction at 6, and an affliction at 6 is otherwise never entered.");
+        "Two things are absolute and are compared before any chaos: a reward worth more than Must take at is routed to through anything, including an affliction at 6, and an affliction at 6 is otherwise never entered.");
 
     public ToggleNode EnablePathfinding { get; set; } = new ToggleNode(true);
     public ColorNode BestPathColor { get; set; } = new(Color.Cyan);
@@ -807,7 +808,7 @@ public class MapDisplaySettings
         "Text and connection lines drawn over the Sanctum floor map.",
         "Each connection carries three stacked lines - currency, room type, affliction - coloured by the best of that kind reachable through it. Set line thickness to 0 to hide them and leave only the route frame.",
         "Hide under game UI drops any text, frame or line that would be covered by an open panel or the chat box, the same way the overlay already gives way to a room tooltip.",
-        "Show reward prices needs the Ninja Price plugin. On the map it prices only the tiers Price max tier allows, since a price on something you rated low is clutter; in the reward window it prices all three offers, which is where choosing between them happens. Either way it is the price of one: reward quantity is not exposed anywhere in room data.",
+        "Show reward prices needs a price plugin registering the NinjaPrice.GetBaseItemTypeValue bridge method - Ninja Price and Get-Chaos-Value both do. On the map it prices every reward that has a price, as the count and what that many come to (\"2x = 800c\"), which is the figure the route is scoring rather than a unit price beside it. Quantity is measured, since room data does not expose it. In the reward window all three offers are priced, with the quantity read from the offer text.",
         "Show prices in divine converts using the live Divine Orb price, read from the game's own reward list, and falls back to chaos while that is unknown.",
         "Isolate hovered room hides every other room's text and the connection lines while you hover, so a floor does not write more than can be read at once. The route itself stays visible.");
 
@@ -815,7 +816,8 @@ public class MapDisplaySettings
     public ColorNode BackgroundColor { get; set; } = new ColorNode(Color.Black with { A = 128 });
     public RangeNode<int> ConnectionLineThickness { get; set; } = new RangeNode<int>(0, 0, 10);
     public ToggleNode HideUnderGameUi { get; set; } = new ToggleNode(true);
-    // Needs the Ninja Price plugin; without it prices are simply omitted
+    // Needs a plugin registering the NinjaPrice.GetBaseItemTypeValue bridge method;
+    // without one, prices are simply omitted
     public ToggleNode ShowRewardPrices { get; set; } = new ToggleNode(false);
 
     // Divine instead of chaos, using the live rate rather than a fixed number
@@ -833,8 +835,9 @@ public class TierColorSettings
 {
     [JsonIgnore]
     public CustomNode Help { get; set; } = SettingsHelp.Block(
-        "One ramp shared by currency, room types and afflictions, so a value reads the same wherever it appears.",
-        "0 always route through, 1-3 good, 4 neutral, 5-7 bad, 8 never route through. Empty colours anything the map has not revealed.");
+        "One ramp of nine shared by rewards, room types and afflictions, so a value reads the same wherever it appears. The three run on scales of different lengths, so each is mapped onto the ramp rather than indexing it directly.",
+        "Rewards take 0 to 5 by what they are worth: 0 is 5 divine or more, then 1d, 0.5d, 0.3d, 0.1d, and 5 is everything below that.",
+        "Room types spread across 1 to 8, tier 0 to tier 10. Afflictions only ever get worse, so they start at neutral and run 4 to 8, tier 0 to the hard block at 6. Empty colours anything the map has not revealed.");
 
     public ColorNode Tier0Color { get; set; } = new(Color.Magenta);
     public ColorNode Tier1Color { get; set; } = new(Color.Cyan);

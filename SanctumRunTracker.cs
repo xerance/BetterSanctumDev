@@ -272,8 +272,8 @@ public class SanctumRunTracker
 
     // The stated policy, applied rather than observed: the slot worth most is assumed
     // taken. Price when a price lookup is available, since that is the question being
-    // asked; otherwise the tier assigned in settings, best tier first and larger quantity
-    // breaking ties.
+    // asked; otherwise the value band recorded with the slot, best band first and larger
+    // quantity breaking ties.
     // Every slot's score is written out beside it, so which slot the policy picked and why
     // is auditable from the file rather than being a number to take on trust.
     private static double SlotValue(SlotObservation slot, Func<string, double> unitPrice)
@@ -294,8 +294,8 @@ public class SanctumRunTracker
 
         // No price for this currency is not the same as no price at all: a lookup that
         // knows chaos but not chromatics would otherwise score the chromatics zero and
-        // hand the room to whichever slot came first. Tiers run 0 best to 8 worst, so
-        // they inverted, and kept negative so a real chaos value always outranks them.
+        // hand the room to whichever slot came first. Bands run 0 best to 5 worst, so
+        // they invert, and are kept negative so a real chaos value always outranks them.
         return -((slot.Tier + 1) * 1000.0) + slot.Quantity;
     }
 

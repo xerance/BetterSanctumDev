@@ -98,9 +98,11 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
         base.AreaChange(area);
     }
 
-    // Resolved lazily and retried: Ninja Price registers its bridge method in its own
-    // Initialise, which may run after ours. Null simply means it is not installed, and
-    // prices are then left out rather than the feature failing loudly.
+    // Asked for by bridge name rather than by plugin: Ninja Price and Get-Chaos-Value both
+    // register this one, and either will do. Resolved lazily and retried, since whichever
+    // is installed registers it in its own Initialise, which may run after ours. Null
+    // simply means neither is there, and prices are then left out rather than the feature
+    // failing loudly.
     private Func<BaseItemType, double> ResolvePriceLookup()
     {
         if (_currencyPrice != null || _sincePriceLookupStopwatch.Elapsed < TimeSpan.FromSeconds(5))
@@ -709,8 +711,8 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
 
     // The price lookup is by base item type, and the tracker only ever holds a currency
     // name, so this bridges the two through the game's own reward categories - the same
-    // table the offer window pricing matches against. Null when Ninja Price is absent,
-    // which makes the tracker fall back to the tiers you assigned.
+    // table the offer window pricing matches against. Null when there is no price plugin,
+    // which makes the tracker fall back to the value bands recorded with each slot.
     // Offer text names the currency in either its singular or plural form - "Receive 1x
     // Volatile Vaal Orb" against "Receive 10x Chaos Orbs" - so both are tried and the
     // longest match wins, or a volatile vaal reads as a vaal. The same rule the offer
@@ -847,7 +849,7 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
     private Func<string, double> ResolveUnitPriceByName()
     {
         // Null when there is no price source at all, which is what tells the tracker to
-        // fall back to your tiers rather than scoring every currency zero.
+        // fall back to the recorded bands rather than scoring every currency zero.
         return ResolvePriceLookup() == null ? null : UnitPriceForCurrency;
     }
 
