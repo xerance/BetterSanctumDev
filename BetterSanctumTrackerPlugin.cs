@@ -290,10 +290,10 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
     // agrees with the route instead of showing a unit price beside it.
     //
     // Quantity is measured rather than read: nothing in room data exposes it.
-    private string DescribeRewardPrice(SanctumDeferredRewardCategory reward, int order, int band)
+    private string DescribeRewardPrice(SanctumDeferredRewardCategory reward, int order)
     {
-        // Priced only where the reward is shown at all, so the two stay in step
-        if (!Settings.MapDisplay.ShowRewardPrices || band > Settings.HideCurrencyBelowTier)
+        // The caller decides whether the reward is shown at all
+        if (!Settings.MapDisplay.ShowRewardPrices)
         {
             return "";
         }
@@ -1370,10 +1370,12 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
                         var currencyName = reward.room.CurrencyName;
                         var rewardFloor = BetterSanctumTrackerSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix);
                         var rewardChaos = RewardChaos(reward.room, reward.order, rewardFloor);
-                        var band = SanctumValues.ValueBand(rewardChaos, DivineChaos());
-                        if (band <= Settings.HideCurrencyBelowTier)
+
+                        // A display filter only - a reward too cheap to write down is
+                        // still scored, since a route is worth the sum of what is on it.
+                        if (rewardChaos >= Settings.HideRewardsBelowChaos)
                         {
-                            textSize = DrawTextWithBackground(currencyName + DescribeRewardPrice(reward.room, reward.order, band), lineLocation, GetRewardColor(rewardChaos), Settings.MapDisplay.BackgroundColor);
+                            textSize = DrawTextWithBackground(currencyName + DescribeRewardPrice(reward.room, reward.order), lineLocation, GetRewardColor(rewardChaos), Settings.MapDisplay.BackgroundColor);
                             lineLocation.Y += textSize.Y;
                         }
                     }

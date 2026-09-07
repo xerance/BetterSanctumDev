@@ -225,13 +225,14 @@ public class BetterSanctumTrackerSettings : ISettings
                      "\n\nHour of Divinity blocks boons: BoonFountain drops to neutral and the early Treasure and Merchant bias is dropped." +
                      "\nGilded Chalice blocks resolve recovery: Fountain drops to neutral. CurseFountain is never adjusted.");
 
-                var hideCurrencyBelowTier = profile.HideCurrencyBelowTier;
-                if (ImGui.SliderInt("Hide currency below band", ref hideCurrencyBelowTier, 0, SanctumValues.CurrencyBandMax))
+                var hideRewardsBelowChaos = profile.HideRewardsBelowChaos;
+                if (ImGui.InputInt("Hide rewards worth less than (chaos)", ref hideRewardsBelowChaos))
                 {
-                    profile.HideCurrencyBelowTier = hideCurrencyBelowTier;
+                    profile.HideRewardsBelowChaos = Math.Max(hideRewardsBelowChaos, 0);
                 }
 
-                Hint("Currencies rated worse than this are left out of the room text on the map. It does not affect routing.");
+                Hint("Rewards worth less than this are left out of the room text on the map. Set 0 to show everything. It does not affect routing - a hidden reward is still scored." +
+                     "\nChaos rather than a band, so it stays where you put it. It does not follow the divine price, so it is worth revisiting when the economy moves.");
 
                 ImGui.TextDisabled("Every axis is scored in chaos. Rewards are priced; rooms and afflictions are priced from an anchor set in Routing.");
                 Hint("Currency 0-4: 0 is taken whatever stands in the way, 4 is ignored, 1-3 all count their full price until you bias them in Routing." +
@@ -547,6 +548,11 @@ public class BetterSanctumTrackerSettings : ISettings
         return prefix != null && FloorsByRoomPrefix.TryGetValue(prefix, out var floor) ? floor : 0;
     }
 
+    // Roughly a third of a divine while one is around 400 chaos. Absolute rather than a
+    // fraction of a divine, because it is a display filter you set once and want to stay
+    // where you put it - worth revisiting when the economy moves.
+    public const int DefaultHideRewardsBelowChaos = 120;
+
     public const int CurrentScaleVersion = 8;
 
     // Version 7 moved all three axes onto chaos, and onto scales of different lengths:
@@ -565,7 +571,7 @@ public class BetterSanctumTrackerSettings : ISettings
         profile.CurrencyUnitPriceOverrides = new Dictionary<string, int>();
         profile.RoomTiers = new Dictionary<string, int>(DefaultRoomTiers);
         profile.AfflictionTiers = new Dictionary<string, int>(DefaultAfflictionTiers);
-        profile.HideCurrencyBelowTier = SanctumValues.CurrencyBandMax;
+        profile.HideRewardsBelowChaos = DefaultHideRewardsBelowChaos;
         profile.RunType = RunTypeNormal;
         profile.ScaleVersion = CurrentScaleVersion;
     }
@@ -632,7 +638,7 @@ public class BetterSanctumTrackerSettings : ISettings
     public int RunType => GetCurrentProfile().profile.RunType;
 
     [JsonIgnore]
-    public int HideCurrencyBelowTier => GetCurrentProfile().profile.HideCurrencyBelowTier;
+    public int HideRewardsBelowChaos => GetCurrentProfile().profile.HideRewardsBelowChaos;
 
     public int GetAfflictionTier(string type)
     {
@@ -676,7 +682,7 @@ public class ProfileContent
 
     // Superseded by RunType. Read once by MigrateProfile, unused after.
     public bool DuplicateRun = false;
-    public int HideCurrencyBelowTier = SanctumValues.CurrencyBandMax;
+    public int HideRewardsBelowChaos = BetterSanctumTrackerSettings.DefaultHideRewardsBelowChaos;
     // Chaos per unit where you disagree with the market. Absent means use the price;
     // zero means the reward is worth nothing and should not pull a route.
     [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
