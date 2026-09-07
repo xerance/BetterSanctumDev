@@ -298,7 +298,14 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
             return "";
         }
 
-        var chaos = UnitPriceFor(reward);
+        // The override, where there is one, so the number on the map is the number the
+        // route is scoring. Reading the market price here instead would show one figure
+        // and route on another.
+        if (!Settings.TryGetCurrencyOverride(reward?.CurrencyName, out var chaos))
+        {
+            chaos = UnitPriceFor(reward);
+        }
+
         if (chaos <= 0)
         {
             return "";
