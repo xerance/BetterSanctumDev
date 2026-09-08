@@ -17,13 +17,13 @@ namespace BetterSanctum;
 public class SanctumRunTracker
 {
     // One row per run, and only what a run is actually judged on: how long it took, what
-    // each floor paid, what the deals in it gave up, how many high rewards were on offer
+    // it paid in total, what the deals in it gave up, how many high rewards were on offer
     // whether or not a route could reach them, and whether either of the two afflictions
     // that make a run's numbers worth setting aside turned up.
     //
     // Everything finer is in the room file, a row per room and slot.
     private const string RunHeader =
-        "when,runId,duration,floor1,floor2,floor3,floor4," +
+        "when,runId,duration,currency," +
         "dealsEntered,dealCurrency,highRewardsSeen," +
         "goldenSmoke,goldenSmokeFloor,deceptiveMirror,deceptiveMirrorFloor";
 
@@ -427,7 +427,7 @@ public class SanctumRunTracker
             var afflictionsTaken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             // Gathered across every floor, since the run is what the row is about
-            var takesByFloor = new Dictionary<int, List<SlotObservation>>();
+            var runTakes = new List<SlotObservation>();
             var dealTakes = new List<SlotObservation>();
             var afflictionFloors = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             var highRewardsSeen = 0;
@@ -454,16 +454,10 @@ public class SanctumRunTracker
                     var assumed = isEntered ? AssumedTake(room, unitPrice) : null;
                     if (assumed != null)
                     {
-                        if (!takesByFloor.TryGetValue(floor.Floor, out var floorTakes))
-                        {
-                            floorTakes = new List<SlotObservation>();
-                            takesByFloor[floor.Floor] = floorTakes;
-                        }
-
-                        floorTakes.Add(assumed);
+                        runTakes.Add(assumed);
                     }
-
                     // Counted whether or not a route could reach it: a floor can show more
+
                     // than one walk can collect, and what was on offer is the question.
                     // Per room rather than per slot, since one room pays one reward however
                     // many of its slots are worth having.
@@ -547,10 +541,7 @@ public class SanctumRunTracker
             runRows.Add(Row(
                 run.RunId,
                 DescribeDuration(run.Ended - run.Started),
-                DescribeHaul(takesByFloor.GetValueOrDefault(1) ?? new List<SlotObservation>(), unitPrice),
-                DescribeHaul(takesByFloor.GetValueOrDefault(2) ?? new List<SlotObservation>(), unitPrice),
-                DescribeHaul(takesByFloor.GetValueOrDefault(3) ?? new List<SlotObservation>(), unitPrice),
-                DescribeHaul(takesByFloor.GetValueOrDefault(4) ?? new List<SlotObservation>(), unitPrice),
+                DescribeHaul(runTakes, unitPrice),
                 dealsEntered, DescribeHaul(dealTakes, unitPrice), highRewardsSeen,
                 goldenFloor > 0, goldenFloor > 0 ? goldenFloor : (object)null,
                 mirrorFloor > 0, mirrorFloor > 0 ? mirrorFloor : (object)null));
