@@ -16,14 +16,16 @@ namespace BetterSanctum;
 // through a run does not lose it.
 public class SanctumRunTracker
 {
-    // One row per run, not per floor. The per-floor breakdown lived here for a while and
-    // was never the question being asked of it - what a run paid, what the deals in it
-    // offered, how long it took, and whether the two afflictions that spoil a run turned
-    // up. Everything finer is still in the room file, a row at a time.
+    // One row per run, and only what a run is actually judged on: how long it took, what
+    // each floor paid, what the deals in it gave up, how many high rewards were on offer
+    // whether or not a route could reach them, and whether either of the two afflictions
+    // that make a run's numbers worth setting aside turned up.
+    //
+    // Everything finer is in the room file, a row per room and slot.
     private const string RunHeader =
-        "when,runId,started,ended,minutes,floors,floorsCompleted,currency,currencyChaos," +
-        "dealRooms,dealsEntered,dealRewards," +
-        "goldenSmoke,goldenSmokeFloor,deceptiveMirror,deceptiveMirrorFloor,hubVisits";
+        "when,runId,duration,floor1,floor2,floor3,floor4," +
+        "dealsEntered,dealCurrency,highRewardsSeen," +
+        "goldenSmoke,goldenSmokeFloor,deceptiveMirror,deceptiveMirrorFloor";
 
     // Afflictions worth a column of their own rather than a line in a list: one hides the
     // rewards the routing is built on, the other sends you somewhere you did not choose,
@@ -362,13 +364,45 @@ public class SanctumRunTracker
     // is written out whole in afflictionsTaken, so the three smoke flags can be checked
     // against the list rather than believed.
 
-    private static string DescribeHaul(IEnumerable<SlotObservation> taken)
+    // Chaos, plus anything worth five chaos a unit or more, richest first. A floor pays a
+    // long tail of alteration and chance that says nothing about how it went, and reading
+    // past it to find the divine was most of the work of reading the file at all.
+    //
+    // Without a price lookup nothing can be filtered, so nothing is: dropping every
+    // currency because none of them has a price would be worse than the clutter.
+    private const double HaulFloorChaos = 5.0;
+
+    private static string DescribeHaul(IEnumerable<SlotObservation> taken, Func<string, double> unitPrice)
     {
-        return string.Join(", ", taken
+        var grouped = taken
             .Where(x => x != null && !string.IsNullOrEmpty(x.Currency))
             .GroupBy(x => x.Currency)
-            .Select(g => $"{g.Sum(x => x.Quantity)} {g.Key}")
-            .OrderBy(x => x, StringComparer.Ordinal));
+            .Select(g => new
+            {
+                Currency = g.Key,
+                Quantity = g.Sum(x => x.Quantity),
+                Unit = unitPrice?.Invoke(g.Key) ?? 0,
+            })
+            .Where(x => unitPrice == null || x.Currency == "Chaos Orbs" || x.Unit >= HaulFloorChaos)
+            .OrderByDescending(x => x.Unit * x.Quantity)
+            .ThenByDescending(x => x.Quantity)
+            .Select(x => $"{x.Quantity} {x.Currency}");
+
+        return string.Join(", ", grouped);
+    }
+
+    // "14m37s", with an hour only where there is one. A run is minutes long, so a decimal
+    // count of them reads as a number to convert rather than a duration to glance at.
+    private static string DescribeDuration(TimeSpan? span)
+    {
+        if (span is not { } elapsed || elapsed < TimeSpan.Zero)
+        {
+            return "";
+        }
+
+        return elapsed.TotalHours >= 1
+            ? $"{(int)elapsed.TotalHours}h{elapsed.Minutes:00}m{elapsed.Seconds:00}s"
+            : $"{elapsed.Minutes}m{elapsed.Seconds:00}s";
     }
 
     // Writes the run out and clears it. Returns how many floor rows were written, or -1 if
@@ -387,21 +421,16 @@ public class SanctumRunTracker
             var runRows = new List<string>();
             var roomRows = new List<string>();
 
-            // The last floor of a run cannot be shown finished by a later one existing
-            var highestFloor = run.Floors.Keys.DefaultIfEmpty(0).Max();
 
             // Afflictions last the run, so they carry from floor to floor rather than
             // being read afresh on each.
             var afflictionsTaken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             // Gathered across every floor, since the run is what the row is about
-            var runTakes = new List<SlotObservation>();
+            var takesByFloor = new Dictionary<int, List<SlotObservation>>();
             var dealTakes = new List<SlotObservation>();
             var afflictionFloors = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            var runValue = 0.0;
-            var runPriced = false;
-            var floorsCompleted = 0;
-            var dealRooms = 0;
+            var highRewardsSeen = 0;
             var dealsEntered = 0;
 
             foreach (var floor in run.Floors.Values.OrderBy(x => x.Floor))
@@ -425,16 +454,25 @@ public class SanctumRunTracker
                     var assumed = isEntered ? AssumedTake(room, unitPrice) : null;
                     if (assumed != null)
                     {
-                        runTakes.Add(assumed);
-                        var value = SlotValue(assumed, unitPrice);
-                        if (value > 0)
+                        if (!takesByFloor.TryGetValue(floor.Floor, out var floorTakes))
                         {
-                            runValue += value;
-                            runPriced = true;
+                            floorTakes = new List<SlotObservation>();
+                            takesByFloor[floor.Floor] = floorTakes;
                         }
+
+                        floorTakes.Add(assumed);
                     }
 
+                    // Counted whether or not a route could reach it: a floor can show more
+                    // than one walk can collect, and what was on offer is the question.
+                    // Per room rather than per slot, since one room pays one reward however
+                    // many of its slots are worth having.
+                    if (TakeableSlots(room).Any(x => x.Tier <= 1))
+                    {
+                        highRewardsSeen++;
+                    }
                     if (isEntered && room.Affliction != null)
+
                     {
                         afflictionsTaken.Add(room.Affliction);
                     }
@@ -480,31 +518,12 @@ public class SanctumRunTracker
                     }
                 }
 
-                // The map is only ever open before a room is entered, so the last layer's
-                // choice is never seen and a completed floor reads one short. Whether a
-                // floor was finished is therefore taken from a later floor existing, and
-                // is genuinely unknown for the last floor of the run.
-                // Reading the reward window in the last layer settles it too, since the
-                // only way to see that window is to have been standing there.
-                var reachedLastLayer = floor.LayerCount > 0 &&
-                                       floor.Rooms.Values.Any(x => x.Layer == floor.LayerCount - 1 && x.Offers.Count > 0);
-                var completed = floor.Floor < highestFloor || reachedLastLayer
-                    ? "1"
-                    : floor.Choices.Count >= floor.LayerCount ? "1" : "unknown";
-
-                // Entered and seen are reported separately because a deal only reveals
-                // itself from the inside: an unentered deal can never have offers, so a
-                // gap between these two is what says the window read is failing.
-                var deals = floor.Rooms.Values.Where(x => x.IsDeal).ToList();
-                dealRooms += deals.Count;
-
-                foreach (var deal in deals.Where(x => entered.Contains(FloorObservation.Key(x.Layer, x.Room))))
+                // A deal reads as empty on the map, so what it gave up is known only from
+                // the reward window, and only for one you actually walked into.
+                foreach (var deal in floor.Rooms.Values.Where(x =>
+                             x.IsDeal && entered.Contains(FloorObservation.Key(x.Layer, x.Room))))
                 {
                     dealsEntered++;
-
-                    // What the deal actually offered, which only the reward window knows -
-                    // a deal reads as empty on the map. An entered deal with nothing
-                    // recorded is one the window was never opened on.
                     var dealTake = AssumedTake(deal, unitPrice);
                     if (dealTake != null)
                     {
@@ -521,25 +540,20 @@ public class SanctumRunTracker
                         afflictionFloors[name] = floor.Floor;
                     }
                 }
-
-                if (completed == "1")
-                {
-                    floorsCompleted++;
-                }
             }
 
             var goldenFloor = afflictionFloors.GetValueOrDefault(GoldenSmoke, 0);
             var mirrorFloor = afflictionFloors.GetValueOrDefault(DeceptiveMirror, 0);
             runRows.Add(Row(
-                run.RunId, run.Started.ToString("s"), run.Ended?.ToString("s"),
-                Math.Round((run.Ended - run.Started)?.TotalMinutes ?? 0, 1),
-                run.Floors.Count, floorsCompleted,
-                DescribeHaul(runTakes),
-                runPriced ? Math.Round(runValue, 2) : (object)null,
-                dealRooms, dealsEntered, DescribeHaul(dealTakes),
+                run.RunId,
+                DescribeDuration(run.Ended - run.Started),
+                DescribeHaul(takesByFloor.GetValueOrDefault(1) ?? new List<SlotObservation>(), unitPrice),
+                DescribeHaul(takesByFloor.GetValueOrDefault(2) ?? new List<SlotObservation>(), unitPrice),
+                DescribeHaul(takesByFloor.GetValueOrDefault(3) ?? new List<SlotObservation>(), unitPrice),
+                DescribeHaul(takesByFloor.GetValueOrDefault(4) ?? new List<SlotObservation>(), unitPrice),
+                dealsEntered, DescribeHaul(dealTakes, unitPrice), highRewardsSeen,
                 goldenFloor > 0, goldenFloor > 0 ? goldenFloor : (object)null,
-                mirrorFloor > 0, mirrorFloor > 0 ? mirrorFloor : (object)null,
-                run.HubVisits));
+                mirrorFloor > 0, mirrorFloor > 0 ? mirrorFloor : (object)null));
 
             Append(_runPath, RunHeader, runRows);
             Append(_roomPath, RoomHeader, roomRows);
