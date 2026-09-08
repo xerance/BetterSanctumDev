@@ -74,6 +74,7 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
         _runTracker = new SanctumRunTracker(
             LogFilePath("sanctum-runs.csv"),
             LogFilePath("sanctum-run-rooms.csv"),
+            LogFilePath("sanctum-deals.csv"),
             LogFilePath("run-state.json"));
         // Picks a run back up after a HUD restart part way through one
         _runTracker.Load();

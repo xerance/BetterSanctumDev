@@ -43,15 +43,28 @@ public class SanctumRunTracker
         "when,runId,floor,layer,room,source,slot,currency,quantity,tier,fightRoom,rewardRoom,roomAffliction," +
         "entered,onTier01Route,assumedTake,slotValue,offerText";
 
+    // Every offer of every deal walked into, on any floor, with nothing filtered out. The
+    // run file reports deals under the same rules as the rest of the haul, which drops
+    // most of what a deal actually pays - deals deal in bulk, and a unit price floor aimed
+    // at a run's long tail removes nearly all of it. This is the raw record to answer
+    // "what is a deal worth" from, once there is enough of it to answer from.
+    //
+    // Every floor, not floor 3 up, because whether an early deal is worth taking is one of
+    // the questions, and a file that had already decided could not answer it.
+    private const string DealHeader =
+        "when,runId,floor,layer,room,slot,currency,quantity,chaos,taken,offerText";
+
     private readonly string _runPath;
     private readonly string _roomPath;
+    private readonly string _dealPath;
     private readonly string _statePath;
     private DateTime _lastSave = DateTime.MinValue;
 
-    public SanctumRunTracker(string runPath, string roomPath, string statePath)
+    public SanctumRunTracker(string runPath, string roomPath, string dealPath, string statePath)
     {
         _runPath = runPath;
         _roomPath = roomPath;
+        _dealPath = dealPath;
         _statePath = statePath;
     }
 
@@ -420,6 +433,7 @@ public class SanctumRunTracker
         {
             var runRows = new List<string>();
             var roomRows = new List<string>();
+            var dealRows = new List<string>();
 
 
             // Afflictions last the run, so they carry from floor to floor rather than
@@ -531,6 +545,31 @@ public class SanctumRunTracker
                     }
                 }
 
+                // Written from every floor, unfiltered, whatever the run row decided to
+                // report. An entered deal with no rows is one whose window never opened.
+                foreach (var deal in floor.Rooms.Values.Where(x =>
+                             x.IsDeal && entered.Contains(FloorObservation.Key(x.Layer, x.Room))))
+                {
+                    var best = AssumedTake(deal, unitPrice);
+                    foreach (var offer in deal.Offers.OrderBy(x => x.Slot))
+                    {
+                        var slot = new SlotObservation
+                        {
+                            Slot = offer.Slot,
+                            Currency = offer.Currency,
+                            Quantity = offer.Quantity,
+                            Tier = offer.Tier,
+                        };
+
+                        dealRows.Add(Row(
+                            run.RunId, floor.Floor, deal.Layer, deal.Room, offer.Slot,
+                            offer.Currency, offer.Quantity,
+                            Math.Round(Math.Max(SlotValue(slot, unitPrice), 0), 2),
+                            best != null && best.Slot == offer.Slot,
+                            offer.Text));
+                    }
+                }
+
                 // The floor an affliction was first seen on, which says when a run stopped
                 // being worth measuring rather than merely that it did.
                 foreach (var name in new[] { GoldenSmoke, DeceptiveMirror })
@@ -554,6 +593,7 @@ public class SanctumRunTracker
 
             Append(_runPath, RunHeader, runRows);
             Append(_roomPath, RoomHeader, roomRows);
+            Append(_dealPath, DealHeader, dealRows);
             Current = null;
             TryDelete(_statePath);
             LastError = null;

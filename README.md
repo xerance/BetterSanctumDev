@@ -105,7 +105,7 @@ their meaning whatever the anchors are set to. A blocked affliction is never adj
 ## Run tracking
 
 Off by default. A window in the Forbidden Sanctum hub starts and ends a run, and End Run
-writes two files to `Logs/BetterSanctumTracker/`:
+writes three files to `Logs/BetterSanctumTracker/`:
 
 - `sanctum-runs.csv` - a row per run: how long it took, what it paid across all four
   floors, how many deals you entered from floor 3 and what they gave up, how many rewards
@@ -114,6 +114,10 @@ writes two files to `Logs/BetterSanctumTracker/`:
 - `sanctum-run-rooms.csv` - a row per room and reward slot, marked `map` or `window`. A
   Deal only ever produces `window` rows, since the map reads its rewards as empty and they
   exist only in the reward window while you stand there.
+- `sanctum-deals.csv` - a row per offer of every deal you walked into, on any floor, with
+  nothing filtered out. The run file reports deals under the same rules as the rest of the
+  haul, which drops most of what a deal actually pays, so this is the raw record to work
+  out what a deal is worth from once there is enough of it.
 
 Hauls list chaos and anything worth five chaos a unit or more, richest first, since the
 long tail of alteration and chance says nothing about how a run went. Comma separated and
