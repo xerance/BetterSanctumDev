@@ -21,7 +21,7 @@ using Vector2 = System.Numerics.Vector2;
 
 namespace BetterSanctum;
 
-public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTrackerSettings>
+public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSettings>
 {
     private readonly Stopwatch _sinceLastReloadStopwatch = Stopwatch.StartNew();
     private Random rndColor = new Random();
@@ -47,12 +47,12 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
     private readonly Dictionary<string, double> _priceByCurrency = new Dictionary<string, double>();
     private readonly Stopwatch _sincePriceCacheStopwatch = Stopwatch.StartNew();
 
-    // Logs/BetterSanctumTracker under the HUD root. Not DirectoryFullName, which is not dependable
+    // Logs/BetterSanctumDev under the HUD root. Not DirectoryFullName, which is not dependable
     // for source-compiled plugins, and not the shared Logs folder directly, which every
     // other plugin writes into too.
     private static string LogFilePath(string fileName)
     {
-        var directory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs", "BetterSanctumTracker");
+        var directory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs", "BetterSanctumDev");
         try
         {
             Directory.CreateDirectory(directory);
@@ -314,8 +314,8 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
             return "";
         }
 
-        var floor = BetterSanctumTrackerSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix);
-        var quantity = BetterSanctumTrackerSettings.GetRewardQuantity(reward?.CurrencyName, order, floor);
+        var floor = BetterSanctumDevSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix);
+        var quantity = BetterSanctumDevSettings.GetRewardQuantity(reward?.CurrencyName, order, floor);
 
         // Always the count, then what that many come to. Showing it only where it was not
         // one left the same currency reading two ways down a floor, and a doubled last
@@ -449,7 +449,7 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
             return;
         }
 
-        var floor = BetterSanctumTrackerSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix);
+        var floor = BetterSanctumDevSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix);
         foreach (var offer in offerWindow.Children)
         {
             var text = offer.Children.Count > 1 ? offer.Children[1].Text : null;
@@ -641,7 +641,7 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
     {
         var floor = new FloorObservation
         {
-            Floor = BetterSanctumTrackerSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix),
+            Floor = BetterSanctumDevSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix),
             Prefix = _lastKnownFloorPrefix,
             LayerCount = roomsByLayer.Count,
         };
@@ -698,7 +698,7 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
                     {
                         Slot = order,
                         Currency = reward.CurrencyName,
-                        Quantity = BetterSanctumTrackerSettings.GetRewardQuantity(reward.CurrencyName, order, floor.Floor),
+                        Quantity = BetterSanctumDevSettings.GetRewardQuantity(reward.CurrencyName, order, floor.Floor),
                         Tier = RewardBand(reward, order, floor.Floor),
                     });
                 }
@@ -775,7 +775,7 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
             return;
         }
 
-        var floor = BetterSanctumTrackerSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix);
+        var floor = BetterSanctumDevSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix);
         if (floor <= 0)
         {
             return;
@@ -843,7 +843,7 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
         }
         catch (Exception e)
         {
-            LogError($"[BetterSanctumTracker] could not read the reward window: {e.Message}", 10);
+            LogError($"[BetterSanctumDev] could not read the reward window: {e.Message}", 10);
         }
     }
 
@@ -993,7 +993,7 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
 
         if (Settings.Debug.TrackRewards)
         {
-            var trackedFloor = BetterSanctumTrackerSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix);
+            var trackedFloor = BetterSanctumDevSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix);
             if (hoveredRoom != null)
             {
                 TrackHoveredTooltip(hoveredRoom, trackedFloor);
@@ -1097,7 +1097,7 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
                 {
                     var room = roomLayer[roomIndex];
                     (List<int> CurrencyTier, int? RoomTier, int? AfflictionTier) thisRoomData = (
-                        room.GetRoomsWithOrder().Select(x => RewardBand(x.room, x.order, BetterSanctumTrackerSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix))).ToList(),
+                        room.GetRoomsWithOrder().Select(x => RewardBand(x.room, x.order, BetterSanctumDevSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix))).ToList(),
                         room.Data.RewardRoom?.RoomType?.Id switch
                         {
                             null => null,
@@ -1157,7 +1157,7 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
         var bestRouteOrder = new List<(int Layer, int Room)>();
         if (Settings.Routing.EnablePathfinding && Settings.Routing.BestPathFrameThickness > 0 && roomsByLayer.Count > 0)
         {
-            var floor = BetterSanctumTrackerSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix);
+            var floor = BetterSanctumDevSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix);
 
             var routeValue = new Dictionary<(int, int), (RouteValue Value, int Next)>();
             for (var layerIndex = roomsByLayer.Count - 1; layerIndex >= 0; layerIndex--)
@@ -1371,7 +1371,7 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
                     foreach (var reward in rewards)
                     {
                         var currencyName = reward.room.CurrencyName;
-                        var rewardFloor = BetterSanctumTrackerSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix);
+                        var rewardFloor = BetterSanctumDevSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix);
                         var rewardChaos = RewardChaos(reward.room, reward.order, rewardFloor);
 
                         // A display filter only - a reward too cheap to write down is
@@ -1682,7 +1682,7 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
         var configured = Settings.HideRewardsBelowChaos;
         return configured >= 0
             ? configured
-            : AnchorChaos(BetterSanctumTrackerSettings.DefaultHidePercentOfDivine);
+            : AnchorChaos(BetterSanctumDevSettings.DefaultHidePercentOfDivine);
     }
 
     // What one offer pays, in chaos. Quantity is the measured figure for that slot, so the
@@ -1694,7 +1694,7 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
     // plugin has never heard of should not read as worthless.
     private double RewardChaos(SanctumDeferredRewardCategory reward, int order, int floor)
     {
-        var quantity = BetterSanctumTrackerSettings.GetRewardQuantity(reward?.CurrencyName, order, floor);
+        var quantity = BetterSanctumDevSettings.GetRewardQuantity(reward?.CurrencyName, order, floor);
         if (Settings.TryGetCurrencyOverride(reward?.CurrencyName, out var overridden))
         {
             return overridden * quantity;
@@ -1777,13 +1777,13 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
     private int AdjustRoomTier(int tier, string roomTypeId, int floor)
     {
         var runType = Settings.RunType;
-        if (runType == BetterSanctumTrackerSettings.RunTypeHourOfDivinity && roomTypeId == "BoonFountain" ||
-            runType == BetterSanctumTrackerSettings.RunTypeGildedChalice && roomTypeId == "Fountain")
+        if (runType == BetterSanctumDevSettings.RunTypeHourOfDivinity && roomTypeId == "BoonFountain" ||
+            runType == BetterSanctumDevSettings.RunTypeGildedChalice && roomTypeId == "Fountain")
         {
             return SanctumValues.RoomNeutralTier;
         }
 
-        if (runType == BetterSanctumTrackerSettings.RunTypeDefault)
+        if (runType == BetterSanctumDevSettings.RunTypeDefault)
         {
             return tier;
         }
@@ -1793,7 +1793,7 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
         //
         // Hour of Divinity has no boons to buy at all, so coins are worth less throughout
         // and none of this applies. CurseFountain is never adjusted.
-        var boonsAreWorthBuying = runType != BetterSanctumTrackerSettings.RunTypeHourOfDivinity;
+        var boonsAreWorthBuying = runType != BetterSanctumDevSettings.RunTypeHourOfDivinity;
         var favoured = boonsAreWorthBuying &&
                        floor <= 2 &&
                        roomTypeId is "Merchant" or "Treasure" or "TreasureMinor";
@@ -1808,12 +1808,12 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
     // not a weight, and a run type is not grounds to overturn it.
     private int AdjustAfflictionTier(int tier, string effectName, int floor)
     {
-        if (SanctumValues.IsHardBlock(tier) || Settings.RunType == BetterSanctumTrackerSettings.RunTypeDefault)
+        if (SanctumValues.IsHardBlock(tier) || Settings.RunType == BetterSanctumDevSettings.RunTypeDefault)
         {
             return tier;
         }
 
-        return floor >= 3 && BetterSanctumTrackerSettings.AfflictionAffectsAureus(effectName)
+        return floor >= 3 && BetterSanctumDevSettings.AfflictionAffectsAureus(effectName)
             ? Math.Max(tier - 1, 0)
             : tier;
     }
@@ -1858,7 +1858,7 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
     // made better or worse reads that way on the map instead of only in the route.
     private Color GetAfflictionColor(string effectName)
     {
-        var floor = BetterSanctumTrackerSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix);
+        var floor = BetterSanctumDevSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix);
         var tier = AdjustAfflictionTier(Settings.GetAfflictionTier(effectName), effectName, floor);
         return GetTierColor(4 + (int)Math.Round(tier * 4.0 / SanctumValues.AfflictionTierMax));
     }
@@ -1867,7 +1867,7 @@ public class BetterSanctumTrackerPlugin : BaseSettingsPlugin<BetterSanctumTracke
     // to rewards alone.
     private Color GetRoomColor(string roomTypeId)
     {
-        var floor = BetterSanctumTrackerSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix);
+        var floor = BetterSanctumDevSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix);
         var tier = AdjustRoomTier(Settings.GetRoomTier(roomTypeId), roomTypeId, floor);
         return GetTierColor(1 + (int)Math.Round(tier * 7.0 / SanctumValues.RoomTierMax));
     }

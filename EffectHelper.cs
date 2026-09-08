@@ -18,9 +18,9 @@ public class EffectHelper
 {
     private readonly GameController _gameController;
     private readonly Graphics _graphics;
-    private readonly BetterSanctumTrackerSettings _settings;
+    private readonly BetterSanctumDevSettings _settings;
 
-    public EffectHelper(GameController gameController, Graphics graphics, BetterSanctumTrackerSettings settings)
+    public EffectHelper(GameController gameController, Graphics graphics, BetterSanctumDevSettings settings)
     {
         _gameController = gameController;
         _graphics = graphics;

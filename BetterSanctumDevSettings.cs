@@ -12,7 +12,7 @@ using Color = SharpDX.Color;
 
 namespace BetterSanctum;
 
-public class BetterSanctumTrackerSettings : ISettings
+public class BetterSanctumDevSettings : ISettings
 {
     private static readonly IReadOnlyList<string> CurrencyTypes = new List<string>
     {
@@ -146,7 +146,7 @@ public class BetterSanctumTrackerSettings : ISettings
         ("Deceptive Mirror", "You are not always taken to the room you select"),
     };
 
-    public BetterSanctumTrackerSettings()
+    public BetterSanctumDevSettings()
     {
         var currencyFilter = "";
         var roomFilter = "";
@@ -712,7 +712,7 @@ public class ProfileContent
     // current by CreateNew.
     public int ScaleVersion = 1;
 
-    public int RunType = BetterSanctumTrackerSettings.RunTypeDefault;
+    public int RunType = BetterSanctumDevSettings.RunTypeDefault;
 
     // Superseded by RunType. Read once by MigrateProfile, unused after.
     public bool DuplicateRun = false;
@@ -723,14 +723,14 @@ public class ProfileContent
     public Dictionary<string, int> CurrencyUnitPriceOverrides = new();
 
     [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
-    public Dictionary<string, int> RoomTiers = new(BetterSanctumTrackerSettings.DefaultRoomTiers);
+    public Dictionary<string, int> RoomTiers = new(BetterSanctumDevSettings.DefaultRoomTiers);
 
     [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
-    public Dictionary<string, int> AfflictionTiers = new(BetterSanctumTrackerSettings.DefaultAfflictionTiers);
+    public Dictionary<string, int> AfflictionTiers = new(BetterSanctumDevSettings.DefaultAfflictionTiers);
 
     public static ProfileContent CreateNew()
     {
-        return new ProfileContent { ScaleVersion = BetterSanctumTrackerSettings.CurrentScaleVersion };
+        return new ProfileContent { ScaleVersion = BetterSanctumDevSettings.CurrentScaleVersion };
     }
 }
 
@@ -872,7 +872,7 @@ public class RunTrackingSettings
 {
     [JsonIgnore]
     public CustomNode Help { get; set; } = SettingsHelp.Block(
-        "Records one run at a time and writes it to Logs/BetterSanctumTracker/ on End Run: sanctum-runs.csv holds a row per floor, sanctum-run-rooms.csv a row per room and reward slot.",
+        "Records one run at a time and writes it to Logs/BetterSanctumDev/ on End Run: sanctum-runs.csv holds a row per run, sanctum-run-rooms.csv a row per room and reward slot, and sanctum-deals.csv every offer of every deal entered.",
         "Rows are marked map or window. Map is what the floor map showed. Window is what the reward window said while you stood in the room, which for a Deal room is the only place its rewards appear at all - the map reads them as empty.",
         "Start and End sit in a window that appears while you are in the Forbidden Sanctum hub. An unfinished run is kept in run-state.json, so restarting the HUD part way through does not lose it.",
         "What a run produced is worked out from the rooms you entered, assuming you took the most valuable slot in each. Nothing reads what you actually clicked, so treat the haul as an estimate - and an optimistic one, since the best slot is usually the end-of-Sanctum deferral, which pays nothing if the run ends early.");
@@ -885,9 +885,9 @@ public class DebugSettings
 {
     [JsonIgnore]
     public CustomNode Help { get; set; } = SettingsHelp.Block(
-        "Writes Logs/BetterSanctumTracker/room-dump.txt once each time the floor map is opened, listing the raw data behind every room.",
-        "Track rewards appends every distinct reward seen to Logs/BetterSanctumTracker/sanctum-rewards.csv: what the map offers and where, the room tooltip, and the reward window text. Leave it on across runs and the table fills in.",
-        "Probe sanctum state appends to Logs/BetterSanctumTracker/sanctum-probe.txt: every area you enter, and the floor data - gold, resolve, room choices and accrued rewards - each time it changes. Turn it on for one full run, from the Forbidden Sanctum through all four floors and back out, then read the file.");
+        "Writes Logs/BetterSanctumDev/room-dump.txt once each time the floor map is opened, listing the raw data behind every room.",
+        "Track rewards appends every distinct reward seen to Logs/BetterSanctumDev/sanctum-rewards.csv: what the map offers and where, the room tooltip, and the reward window text. Leave it on across runs and the table fills in.",
+        "Probe sanctum state appends to Logs/BetterSanctumDev/sanctum-probe.txt: every area you enter, and the floor data - gold, resolve, room choices and accrued rewards - each time it changes. Turn it on for one full run, from the Forbidden Sanctum through all four floors and back out, then read the file.");
 
     public ToggleNode DebugDumpRoomData { get; set; } = new ToggleNode(false);
     public ToggleNode TrackRewards { get; set; } = new ToggleNode(false);

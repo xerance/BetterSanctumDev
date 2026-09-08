@@ -1,4 +1,4 @@
-# BetterSanctumTracker
+# BetterSanctumDev
 
 A Sanctum overlay for [ExileApi](https://github.com/exApiTools/ExileApi-Compiled).
 
@@ -31,11 +31,14 @@ ETH: 0x3A37B3f57453555C2ceabb1a2A4f55E0eB969105
 ## Relationship to BetterSanctum
 
 A full copy of [xerance/BetterSanctum](https://github.com/xerance/BetterSanctum) with its
-history, kept separate so the HUD can install both and the original stays working. The
-plugin class is renamed, which is what keeps them apart: the HUD identifies a plugin by its
-class name and not by its folder, so sharing one meant sharing a menu entry and a settings
-file. Settings live in `BetterSanctumTracker_settings.json`, logs in
-`Logs/BetterSanctumTracker/`.
+history, worked on separately so the HUD can install both and the one you actually run
+stays working. It shows up as **BetterSanctumDev**, which is the name of the plugin class:
+the HUD identifies a plugin by its class name and not by its folder or its assembly, so
+while the two shared a class name they shared a menu entry and a settings file as well.
+Settings live in `BetterSanctumDev_settings.json`, logs in `Logs/BetterSanctumDev/`.
+
+Once this is in a state worth keeping, it merges back into BetterSanctum as an ordinary
+merge - the namespace is unchanged, so the class name is the only thing to undo.
 
 **Do not enable both at once.** They draw the same overlay, so you get every frame and
 every line twice.
@@ -105,7 +108,7 @@ their meaning whatever the anchors are set to. A blocked affliction is never adj
 ## Run tracking
 
 Off by default. A window in the Forbidden Sanctum hub starts and ends a run, and End Run
-writes three files to `Logs/BetterSanctumTracker/`:
+writes three files to `Logs/BetterSanctumDev/`:
 
 - `sanctum-runs.csv` - a row per run: how long it took, what it paid across all four
   floors, how many deals you entered from floor 3 and what they gave up, how many rewards
@@ -141,5 +144,5 @@ part way through a run does not lose it.
 
 ## Building
 
-Put the source in `Plugins/Source/BetterSanctumTracker` and launch the HUD, which compiles
-it. Debug output goes to `Logs/BetterSanctumTracker/` in the HUD root.
+Put the source in `Plugins/Source/BetterSanctumDev` and launch the HUD, which compiles
+it. Debug output goes to `Logs/BetterSanctumDev/` in the HUD root.
