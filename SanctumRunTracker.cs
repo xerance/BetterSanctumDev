@@ -16,11 +16,20 @@ namespace BetterSanctum;
 // through a run does not lose it.
 public class SanctumRunTracker
 {
+    // One row per run, not per floor. The per-floor breakdown lived here for a while and
+    // was never the question being asked of it - what a run paid, what the deals in it
+    // offered, how long it took, and whether the two afflictions that spoil a run turned
+    // up. Everything finer is still in the room file, a row at a time.
     private const string RunHeader =
-        "when;runId;started;ended;floor;prefix;layers;roomsSeen;rewardRooms;layersEntered;floorCompleted;" +
-        "rewardsObscured;roomTypesObscured;afflictionsObscured;afflictionsTaken;" +
-        "tier01Visible;tier01Collectable;tier01Skipped;dealRooms;dealRoomsEntered;dealOffersSeen;" +
-        "assumedHaul;assumedValue;valueBasis;hubVisits;extraHubVisits";
+        "when,runId,started,ended,minutes,floors,floorsCompleted,currency,currencyChaos," +
+        "dealRooms,dealsEntered,dealRewards," +
+        "goldenSmoke,goldenSmokeFloor,deceptiveMirror,deceptiveMirrorFloor,hubVisits";
+
+    // Afflictions worth a column of their own rather than a line in a list: one hides the
+    // rewards the routing is built on, the other sends you somewhere you did not choose,
+    // and either makes a run's numbers worth setting aside.
+    private const string GoldenSmoke = "Golden Smoke";
+    private const string DeceptiveMirror = "Deceptive Mirror";
 
     // A row per room now, not per reward slot: a room with no rewards - a deal, a fountain,
     // the boss - carried none and so appeared nowhere, which made the room-type columns
@@ -29,8 +38,8 @@ public class SanctumRunTracker
     // what the reward window said while you stood in the room. A Deal only ever produces
     // the second, since the map reads its rewards as null.
     private const string RoomHeader =
-        "when;runId;floor;layer;room;source;slot;currency;quantity;tier;fightRoom;rewardRoom;roomAffliction;" +
-        "entered;onTier01Route;assumedTake;slotValue;offerText";
+        "when,runId,floor,layer,room,source,slot,currency,quantity,tier,fightRoom,rewardRoom,roomAffliction," +
+        "entered,onTier01Route,assumedTake,slotValue,offerText";
 
     private readonly string _runPath;
     private readonly string _roomPath;
@@ -378,29 +387,32 @@ public class SanctumRunTracker
             var runRows = new List<string>();
             var roomRows = new List<string>();
 
-            // A complete run passes through the hub once per floor, so that is the
-            // baseline an informative count is measured against.
-            var expectedHubVisits = run.Floors.Count;
-
+            // The last floor of a run cannot be shown finished by a later one existing
             var highestFloor = run.Floors.Keys.DefaultIfEmpty(0).Max();
 
             // Afflictions last the run, so they carry from floor to floor rather than
             // being read afresh on each.
             var afflictionsTaken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+            // Gathered across every floor, since the run is what the row is about
+            var runTakes = new List<SlotObservation>();
+            var dealTakes = new List<SlotObservation>();
+            var afflictionFloors = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var runValue = 0.0;
+            var runPriced = false;
+            var floorsCompleted = 0;
+            var dealRooms = 0;
+            var dealsEntered = 0;
+
             foreach (var floor in run.Floors.Values.OrderBy(x => x.Floor))
             {
-                var (collectable, route) = BestTier01Route(floor);
-                var visible = floor.Rooms.Values.Sum(x => x.Tier01Count);
+                var (_, route) = BestTier01Route(floor);
                 var entered = new HashSet<string>();
                 for (var layer = 0; layer < floor.Choices.Count; layer++)
                 {
                     entered.Add(FloorObservation.Key(layer, floor.Choices[layer]));
                 }
 
-                var taken = new List<SlotObservation>();
-                var takenValue = 0.0;
-                var pricedAny = false;
                 foreach (var room in floor.Rooms.Values.OrderBy(x => x.Layer).ThenBy(x => x.Room))
                 {
                     var key = FloorObservation.Key(room.Layer, room.Room);
@@ -413,12 +425,12 @@ public class SanctumRunTracker
                     var assumed = isEntered ? AssumedTake(room, unitPrice) : null;
                     if (assumed != null)
                     {
-                        taken.Add(assumed);
+                        runTakes.Add(assumed);
                         var value = SlotValue(assumed, unitPrice);
                         if (value > 0)
                         {
-                            takenValue += value;
-                            pricedAny = true;
+                            runValue += value;
+                            runPriced = true;
                         }
                     }
 
@@ -484,24 +496,50 @@ public class SanctumRunTracker
                 // itself from the inside: an unentered deal can never have offers, so a
                 // gap between these two is what says the window read is failing.
                 var deals = floor.Rooms.Values.Where(x => x.IsDeal).ToList();
-                var dealsEntered = deals.Count(x => entered.Contains(FloorObservation.Key(x.Layer, x.Room)));
-                var dealsWithOffers = deals.Count(x => x.Offers.Count > 0);
-                runRows.Add(Row(
-                    run.RunId, run.Started.ToString("s"), run.Ended?.ToString("s"),
-                    floor.Floor, floor.Prefix, floor.LayerCount,
-                    floor.Rooms.Count, floor.Rooms.Values.Count(x => x.Slots.Count > 0),
-                    floor.Choices.Count, completed,
-                    floor.RewardsObscured || afflictionsTaken.Contains("Golden Smoke"),
-                    floor.RoomTypesObscured || afflictionsTaken.Contains("Red Smoke"),
-                    floor.AfflictionsObscured || afflictionsTaken.Contains("Purple Smoke"),
-                    string.Join(", ", afflictionsTaken.OrderBy(x => x, StringComparer.Ordinal)),
-                    visible, collectable, Math.Max(visible - collectable, 0),
-                    deals.Count, dealsEntered, dealsWithOffers,
-                    DescribeHaul(taken),
-                    pricedAny ? Math.Round(takenValue, 2) : (object)null,
-                    unitPrice == null ? "tier" : pricedAny ? "chaos" : "tier",
-                    run.HubVisits, Math.Max(run.HubVisits - expectedHubVisits, 0)));
+                dealRooms += deals.Count;
+
+                foreach (var deal in deals.Where(x => entered.Contains(FloorObservation.Key(x.Layer, x.Room))))
+                {
+                    dealsEntered++;
+
+                    // What the deal actually offered, which only the reward window knows -
+                    // a deal reads as empty on the map. An entered deal with nothing
+                    // recorded is one the window was never opened on.
+                    var dealTake = AssumedTake(deal, unitPrice);
+                    if (dealTake != null)
+                    {
+                        dealTakes.Add(dealTake);
+                    }
+                }
+
+                // The floor an affliction was first seen on, which says when a run stopped
+                // being worth measuring rather than merely that it did.
+                foreach (var name in new[] { GoldenSmoke, DeceptiveMirror })
+                {
+                    if (!afflictionFloors.ContainsKey(name) && afflictionsTaken.Contains(name))
+                    {
+                        afflictionFloors[name] = floor.Floor;
+                    }
+                }
+
+                if (completed == "1")
+                {
+                    floorsCompleted++;
+                }
             }
+
+            var goldenFloor = afflictionFloors.GetValueOrDefault(GoldenSmoke, 0);
+            var mirrorFloor = afflictionFloors.GetValueOrDefault(DeceptiveMirror, 0);
+            runRows.Add(Row(
+                run.RunId, run.Started.ToString("s"), run.Ended?.ToString("s"),
+                Math.Round((run.Ended - run.Started)?.TotalMinutes ?? 0, 1),
+                run.Floors.Count, floorsCompleted,
+                DescribeHaul(runTakes),
+                runPriced ? Math.Round(runValue, 2) : (object)null,
+                dealRooms, dealsEntered, DescribeHaul(dealTakes),
+                goldenFloor > 0, goldenFloor > 0 ? goldenFloor : (object)null,
+                mirrorFloor > 0, mirrorFloor > 0 ? mirrorFloor : (object)null,
+                run.HubVisits));
 
             Append(_runPath, RunHeader, runRows);
             Append(_roomPath, RoomHeader, roomRows);
@@ -517,18 +555,32 @@ public class SanctumRunTracker
         }
     }
 
-    // Semicolon separated to match the existing reward log, so anything separating a
-    // value has to go. Booleans are written as 0/1, which a spreadsheet sums.
+    // Comma separated and quoted the ordinary way, which is what a spreadsheet opens
+    // without being told anything. The old semicolons matched the reward log and cost a
+    // separator dialog on every import; a list like "2 Divine Orbs, 14 Chaos Orbs" is now
+    // quoted rather than having its commas stripped out of it.
+    //
+    // Booleans are 0/1, which a spreadsheet can sum.
     private static string Row(params object[] values)
     {
-        return string.Join(";", values.Select(value => value switch
+        return string.Join(",", values.Select(Field));
+    }
+
+    private static string Field(object value)
+    {
+        var text = value switch
         {
             null => "",
             bool flag => flag ? "1" : "0",
             int number => number.ToString(CultureInfo.InvariantCulture),
             double number => number.ToString(CultureInfo.InvariantCulture),
-            _ => value.ToString().Replace(";", ",").Replace("\n", " ").Replace("\r", " "),
-        }));
+            _ => value.ToString(),
+        };
+
+        text = text.Replace("\r", " ").Replace("\n", " ");
+        return text.Contains(',') || text.Contains('"')
+            ? $"\"{text.Replace("\"", "\"\"")}\""
+            : text;
     }
 
     private static void Append(string path, string header, List<string> rows)
@@ -544,7 +596,7 @@ public class SanctumRunTracker
             File.AppendAllText(path, header + Environment.NewLine);
         }
 
-        File.AppendAllLines(path, rows.Select(row => $"{stamp};{row}"));
+        File.AppendAllLines(path, rows.Select(row => $"{stamp},{row}"));
     }
 
     // Throttled, because a merge happens every frame the map is open and this is disk.

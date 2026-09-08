@@ -107,12 +107,16 @@ their meaning whatever the anchors are set to. A blocked affliction is never adj
 Off by default. A window in the Forbidden Sanctum hub starts and ends a run, and End Run
 writes two files to `Logs/BetterSanctumTracker/`:
 
-- `sanctum-runs.csv` - a row per floor: rooms seen and entered, rewards worth a divine or
-  more visible against how many one route could actually collect, deal rooms seen and read,
-  afflictions taken, hub visits, and what the run is assumed to have produced.
+- `sanctum-runs.csv` - a row per run: how long it took, what it paid and what that is worth
+  in chaos, how many deals were seen, entered and what they offered, whether Golden Smoke
+  or Deceptive Mirror turned up and on which floor, and how many times you passed through
+  the hub.
 - `sanctum-run-rooms.csv` - a row per room and reward slot, marked `map` or `window`. A
   Deal only ever produces `window` rows, since the map reads its rewards as empty and they
   exist only in the reward window while you stand there.
+
+Comma separated and quoted the ordinary way, so a spreadsheet opens either without being
+asked about separators.
 
 Rooms reveal a few layers at a time, so a floor is merged across every map opening rather
 than captured once. What a run produced is worked out from the rooms you entered, assuming
