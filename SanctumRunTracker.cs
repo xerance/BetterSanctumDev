@@ -514,8 +514,14 @@ public class SanctumRunTracker
 
                 // A deal reads as empty on the map, so what it gave up is known only from
                 // the reward window, and only for one you actually walked into.
+                //
+                // Floor 3 and up only. An early deal pays too little to be worth counting
+                // beside a late one, and averaging the two together would say less about
+                // either than leaving the early ones out says on its own.
                 foreach (var deal in floor.Rooms.Values.Where(x =>
-                             x.IsDeal && entered.Contains(FloorObservation.Key(x.Layer, x.Room))))
+                             floor.Floor >= 3 &&
+                             x.IsDeal &&
+                             entered.Contains(FloorObservation.Key(x.Layer, x.Room))))
                 {
                     dealsEntered++;
                     var dealTake = AssumedTake(deal, unitPrice);

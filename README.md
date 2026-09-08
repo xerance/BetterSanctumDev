@@ -108,7 +108,8 @@ Off by default. A window in the Forbidden Sanctum hub starts and ends a run, and
 writes two files to `Logs/BetterSanctumTracker/`:
 
 - `sanctum-runs.csv` - a row per run: how long it took, what it paid across all four floors, how many
-  deals you entered and what they gave up, how many rewards worth a divine or more the run
+  deals you entered from floor 3 and what they gave up, how many rewards worth a divine or
+  more the run
   put in front of you whether or not a route could reach them, and whether Golden Smoke or
   Deceptive Mirror turned up and on which floor.
 - `sanctum-run-rooms.csv` - a row per room and reward slot, marked `map` or `window`. A
