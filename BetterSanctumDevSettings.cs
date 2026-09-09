@@ -231,19 +231,20 @@ public class BetterSanctumDevSettings : ISettings
                 // -1 for "unset" the same way the currency overrides read it, so the two
                 // fields behave alike rather than one clamping where the other clears.
                 var hideRewardsBelowChaos = profile.HideRewardsBelowChaos;
-                if (ImGui.InputInt("Hide rewards worth less than (chaos)", ref hideRewardsBelowChaos))
+                if (ImGui.InputInt("Hide rewards worth less than (chaos) override", ref hideRewardsBelowChaos))
                 {
                     profile.HideRewardsBelowChaos = hideRewardsBelowChaos < 0 ? -1 : hideRewardsBelowChaos;
                 }
 
                 Hint("Rewards worth less than this are left out of the room text on the map. It does not affect routing - a hidden reward is still scored." +
-                     $"\n-1 follows the divine price, at {DefaultHidePercentOfDivine}% of one, so it moves as the economy does. 0 shows everything." +
-                     "\nA figure you type is absolute chaos and stays where you put it, so it is worth revisiting when prices move.");
+                     $"\n\n-1 uses the default, which is {DefaultHidePercentOfDivine}% of a Divine Orb{DescribeDefaultHideChaos()}. Being a share of a divine it moves as the economy does." +
+                     "\n0 hides nothing." +
+                     "\n\nAnything else is that many chaos, flat, and stays where you put it - so it is worth revisiting when prices move.");
 
                 ImGui.TextDisabled("Every axis is scored in chaos. Rewards are priced; rooms and afflictions are priced from an anchor set in Routing.");
                 Hint("Currency has no tiers. A reward is worth its price times the quantity of the slot, and its band is read off that figure, so the only setting is the price override below." +
                      "\nRoom 0-10: 0 is worth the room anchor, 5 is worth nothing, 10 costs the anchor. Unrated room types sit at 5." +
-                     "\nAffliction 0-6: 0 costs nothing, 5 costs the affliction anchor, 6 is never walked into unless a reward past Must take at lies beyond it. Unrated afflictions sit at 3, since an unrated one is a cost of unknown size rather than a free one.");
+                     "\nAffliction 0-6: 0 costs nothing, 5 costs the affliction anchor, 6 is never walked into unless a reward past Must Take Percent Of Divine lies beyond it. Unrated afflictions sit at 3, since an unrated one is a cost of unknown size rather than a free one.");
 
                 if (ImGui.TreeNode("Currency price overrides"))
                 {
@@ -573,13 +574,14 @@ public class BetterSanctumDevSettings : ISettings
         return prefix != null && FloorsByRoomPrefix.TryGetValue(prefix, out var floor) ? floor : 0;
     }
 
-    // A tenth of a divine while one is around 400 chaos, which is the bottom colour band
-    // and little more than a floor under the noise. Deliberately low: silencing one
-    // currency is what an override of zero is for, and a default that hid by price would
-    // take that decision away from every currency at once.
+    // A tenth of a divine, which is the bottom colour band and little more than a floor
+    // under the noise. Deliberately low: silencing one currency is what an override of
+    // zero is for, and a default that hid by price would take that decision away from
+    // every currency at once.
     //
-    // Absolute rather than a fraction of a divine, because it is a display filter you set
-    // once and want to stay where you put it - worth revisiting when the economy moves.
+    // A share of a divine rather than a chaos figure, so it tracks the economy the way
+    // the routing anchors do. The override beside it is flat chaos, for a line that stays
+    // exactly where you put it.
     public const int DefaultHidePercentOfDivine = 10;
 
     public const int CurrentScaleVersion = 8;
@@ -603,6 +605,20 @@ public class BetterSanctumDevSettings : ISettings
         profile.HideRewardsBelowChaos = -1;
         profile.RunType = RunTypeDefault;
         profile.ScaleVersion = CurrentScaleVersion;
+    }
+
+    // The plugin owns the divine price, so the settings borrow it to show what a
+    // percentage actually comes to. Unset until Initialise runs, and unset is fine: the
+    // hint drops the figure rather than inventing one.
+    [JsonIgnore]
+    public Func<double> DivineChaosProvider { get; set; }
+
+    private string DescribeDefaultHideChaos()
+    {
+        var divine = DivineChaosProvider?.Invoke() ?? 0;
+        return divine > 0
+            ? $", about {divine * DefaultHidePercentOfDivine / 100.0:0}c with a divine at {divine:0}c"
+            : "";
     }
 
     // Hover marker after the control it explains
@@ -766,7 +782,7 @@ public class RoutingSettings
         "Rewards are priced from the price plugin and multiplied by the measured quantity for their slot, so a single-item reward in the third slot on floor 4 counts double. Any plugin registering the NinjaPrice.GetBaseItemTypeValue bridge method will do - Ninja Price and Get-Chaos-Value both answer to it.",
         "With no price plugin at all, the divine falls back to the figure below and every reward reads as the unknown reward figure, so rewards stop separating routes and only rooms and afflictions do. Price the ones you care about by hand with the currency overrides.",
         "Rooms and afflictions have no price of their own, so they are set as a percentage of a divine and move with it. A room at tier 0 is worth the room anchor, tier 5 nothing, tier 10 costs the anchor. An affliction at tier 5 costs the affliction anchor, and tier 6 is never walked into.",
-        "Two things are absolute and are compared before any chaos: a reward worth more than Must take at is routed to through anything, including an affliction at 6, and an affliction at 6 is otherwise never entered.");
+        "Two things are absolute and are compared before any chaos: a reward worth more than Must Take Percent Of Divine is routed to through anything, including an affliction at 6, and an affliction at 6 is otherwise never entered.");
 
     public ToggleNode EnablePathfinding { get; set; } = new ToggleNode(true);
     public ColorNode BestPathColor { get; set; } = new(Color.Cyan);
