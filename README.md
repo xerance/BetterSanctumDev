@@ -32,13 +32,13 @@ ETH: 0x3A37B3f57453555C2ceabb1a2A4f55E0eB969105
 
 A full copy of [xerance/BetterSanctum](https://github.com/xerance/BetterSanctum) with its
 history, worked on separately so the HUD can install both and the one you actually run
-stays working. It shows up as **BetterSanctumDev**, which is the name of the plugin class:
-the HUD identifies a plugin by its class name and not by its folder or its assembly, so
-while the two shared a class name they shared a menu entry and a settings file as well.
-Settings live in `BetterSanctumDev_settings.json`, logs in `Logs/BetterSanctumDev/`.
+stays working. It shows up as **BetterSanctumDev** in the plugin list, which is the
+namespace: the HUD labels the list entry by namespace and keys the settings file off the
+assembly name, so both had to move for the two to be separable. Settings live in
+`BetterSanctumDev_settings.json`, logs in `Logs/BetterSanctumDev/`.
 
 Once this is in a state worth keeping, it merges back into BetterSanctum as an ordinary
-merge - the namespace is unchanged, so the class name is the only thing to undo.
+merge - the namespace, the class names and the project name are the only things to undo.
 
 **Do not enable both at once.** They draw the same overlay, so you get every frame and
 every line twice.
