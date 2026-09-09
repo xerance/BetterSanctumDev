@@ -458,8 +458,11 @@ public class BetterSanctumDevSettings : ISettings
     // deliberately: they are in the last layer every route passes through, so their value
     // cannot separate two routes.
     //
-    // Deal is neutral too. What a deal pays is its own setting, since the map reads its
-    // rewards as empty, and grading the room type as well would count it twice.
+    // Deal is nudged one step attractive rather than left neutral. That is on top of what
+    // a deal pays, which is its own setting, since the map reads a deal's rewards as
+    // empty - so the step is a thumb on the scale for entering one at all, not a price.
+    //
+    // These are the tuned values from a played profile, not a first guess.
     public static readonly IReadOnlyDictionary<string, int> DefaultRoomTiers = new Dictionary<string, int>
     {
         ["Explore"] = 4,
@@ -469,65 +472,89 @@ public class BetterSanctumDevSettings : ISettings
         ["Lair"] = 5,
         ["Vault"] = 5,
         ["Boss"] = 5,
-        ["Miniboss"] = 6,
-        ["Arena"] = 6,
-        ["Merchant"] = 4,
+        ["Miniboss"] = 5,
+        ["Arena"] = 7,
+        ["Merchant"] = 5,
         ["BoonFountain"] = 4,
-        ["RainbowFountain"] = 3,
+        ["RainbowFountain"] = 4,
         ["Deferral"] = 5,
         ["Fountain"] = 5,
-        ["Treasure"] = 3,
-        ["TreasureMinor"] = 4,
-        ["Deal"] = 5,
+        ["Treasure"] = 5,
+        ["TreasureMinor"] = 5,
+        ["Deal"] = 4,
         ["Final"] = 5,
-        ["CurseFountain"] = 7,
+        ["CurseFountain"] = 5,
     };
 
     // 6 is reserved for the run-enders and is absolute; 0 to 5 are costs running from
-    // nothing up to the whole anchor.
+    // nothing up to the whole anchor. These are the tuned values from a played profile.
+    //
+    // Death Toll is deliberately absent and falls to the unrated tier, since it has never
+    // been rated in play. Anything else the game adds lands there too.
     public static readonly IReadOnlyDictionary<string, int> DefaultAfflictionTiers = new Dictionary<string, int>
     {
+        // Never walked into
         ["Accursed Prism"] = 6,
-        ["Poisoned Water"] = 6,
         ["Golden Smoke"] = 6,
         ["Deadly Snare"] = 6,
         ["Ghastly Scythe"] = 6,
-        ["Orb of Negation"] = 6,
-        ["Purple Smoke"] = 4,
-        ["Liquid Cowardice"] = 4,
-        ["Deceptive Mirror"] = 4,
-        ["Glass Shard"] = 4,
-        ["Cutpurse"] = 3,
+        ["Purple Smoke"] = 6,
+
+        // The whole anchor: run-shaping, but a rich enough room still buys past them
+        ["Poisoned Water"] = 5,
+        ["Orb of Negation"] = 5,
+        ["Liquid Cowardice"] = 5,
+        ["Deceptive Mirror"] = 5,
+        ["Glass Shard"] = 5,
+        ["Cutpurse"] = 5,
+        ["Unholy Urn"] = 5,
+        ["Tight Choker"] = 5,
+
+        ["Rusted Coin"] = 4,
+        ["Chiselled Stone"] = 4,
+        ["Fiendish Wings"] = 4,
+        ["Demonic Skull"] = 4,
+        ["Unassuming Brick"] = 4,
+        ["Rapid Quicksand"] = 4,
+        ["Phantom Illusion"] = 4,
+        ["Black Smoke"] = 4,
+        ["Anomaly Attractor"] = 4,
+        ["Corrupted Lockpick"] = 4,
+
         ["Veiled Sight"] = 3,
         ["Red Smoke"] = 3,
         ["Floor Tax"] = 3,
         ["Unhallowed Amulet"] = 3,
-        ["Rusted Coin"] = 3,
-        ["Chiselled Stone"] = 3,
-        ["Fiendish Wings"] = 3,
         ["Empty Trove"] = 3,
-        ["Demonic Skull"] = 3,
-        ["Unassuming Brick"] = 3,
-        ["Rapid Quicksand"] = 3,
         ["Door Tax"] = 3,
         ["Unhallowed Ring"] = 3,
-        ["Phantom Illusion"] = 3,
+        ["Concealed Anomaly"] = 3,
+
         ["Worn Sandals"] = 2,
-        ["Black Smoke"] = 2,
-        ["Tattered Blindfold"] = 2,
-        ["Anomaly Attractor"] = 2,
-        ["Unquenched Thirst"] = 2,
-        ["Dark Pit"] = 2,
-        ["Unholy Urn"] = 2,
-        ["Haemorrhage"] = 2,
         ["Mark of Terror"] = 2,
-        ["Concealed Anomaly"] = 2,
         ["Spiked Shell"] = 2,
         ["Honed Claws"] = 2,
-        ["Tight Choker"] = 2,
-        ["Spilt Purse"] = 2,
         ["Charred Coin"] = 2,
-        ["Corrupted Lockpick"] = 2,
+        ["Blunt Sword"] = 2,
+        ["Weakened Flesh"] = 2,
+
+        ["Tattered Blindfold"] = 1,
+        ["Unquenched Thirst"] = 1,
+        ["Dark Pit"] = 1,
+        ["Haemorrhage"] = 1,
+        ["Spilt Purse"] = 1,
+        ["Hungry Fangs"] = 1,
+        ["Voodoo Doll"] = 1,
+        ["Gargoyle Totem"] = 1,
+        ["Spiked Exit"] = 1,
+        ["Chains of Binding"] = 1,
+        ["Rusted Mallet"] = 1,
+
+        // Costs nothing worth routing around
+        ["Corrosive Concoction"] = 0,
+        ["Shattered Shield"] = 0,
+        ["Sharpened Arrowhead"] = 0,
+        ["Iron Manacles"] = 0,
     };
 
     // Adjustments shift a tier by a step before it is priced, rather than adding chaos, so
