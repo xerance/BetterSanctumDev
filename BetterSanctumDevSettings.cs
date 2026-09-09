@@ -14,21 +14,38 @@ namespace BetterSanctumDev;
 
 public class BetterSanctumDevSettings : ISettings
 {
+    // The ones worth reading first, then everything else. This is the column order of the
+    // wide run file, so the left of that sheet is the part worth looking at and the tail
+    // sits off past the fold.
+    //
+    // Ordered by what is worth noticing rather than by price, deliberately: any order that
+    // tracked price would be right for one league only. An exalt led this list once and is
+    // worth under two chaos now, while fracturing orbs outprice a divine.
     public static readonly IReadOnlyList<string> CurrencyTypes = new List<string>
     {
+        "Mirrors of Kalandra",
+        "Volatile Vaal Orbs",
+        "Fracturing Orbs",
+        "Divine Orbs",
+        "Veiled Chaos Orbs",
+        "Sacred Orbs",
+        "Orbs of Annulment",
+        "Ancient Orbs",
+        "Divine Vessels",
+        "Chaos Orbs",
+        "Chromatic Orbs",
+        "Gemcutter's Prisms",
+
         "Orbs of Alteration",
         "Orbs of Chance",
         "Glassblower's Baubles",
-        "Chromatic Orbs",
         "Jeweller's Orbs",
         "Orbs of Alchemy",
         "Orbs of Fusing",
         "Orbs of Scouring",
         "Cartographer's Chisels",
-        "Chaos Orbs",
         "Orbs of Binding",
         "Orbs of Regret",
-        "Gemcutter's Prisms",
         "Blessed Orbs",
         "Vaal Orbs",
         "Orbs of Horizon",
@@ -38,20 +55,11 @@ public class BetterSanctumDevSettings : ISettings
         "Orbs of Unmaking",
         "Awakened Sextants",
         "Stacked Decks",
-        "Veiled Chaos Orbs",
-        "Orbs of Annulment",
-        "Divine Orbs",
         "Exalted Orbs",
-        "Divine Vessels",
-        "Sacred Orbs",
-        "Mirrors of Kalandra",
         "Blacksmith's Whetstones",
         "Armourer's Scraps",
         "Orbs of Transmutation",
         "Orbs of Augmentation",
-        "Fracturing Orbs",
-        "Volatile Vaal Orbs",
-        "Ancient Orbs",
     };
 
     // JsonIgnore matters here: Newtonsoft appends to an existing collection rather than

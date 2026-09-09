@@ -105,8 +105,13 @@ public class SanctumRunTracker
     // category it does not know about would otherwise be dropped without trace - which is
     // exactly what happened to Ancient Orbs. Anything without a column of its own is named
     // there instead, where it is visible rather than missing.
+    //
+    // deals and dealChaos are a part of chaos, not an addition to it: a deal is a room,
+    // and what it paid is already in the run's haul and in its currency columns. They are
+    // here so the share of a run that came out of deals can be read off without going to
+    // the deal file for it.
     private string WideHeader =>
-        "when,run,runId,areaLevel,duration,chaos," +
+        "when,run,runId,areaLevel,duration,chaos,deals,dealChaos," +
         string.Join(",", _currencyColumns.Select(Field)) + ",other";
 
     public RunState Current { get; private set; }
@@ -679,7 +684,7 @@ public class SanctumRunTracker
             Append(_roomPath, RoomHeader, roomRows);
             Append(_dealPath, DealHeader, dealRows);
             Append(_currencyPath, CurrencyHeader, currencyRows);
-            Append(_widePath, WideHeader, new List<string> { WideRow(run, runTakes, unitPrice) });
+            Append(_widePath, WideHeader, new List<string> { WideRow(run, runTakes, dealsEntered, dealTakes, unitPrice) });
             Current = null;
             TryDelete(_statePath);
             LastError = null;
@@ -706,7 +711,12 @@ public class SanctumRunTracker
     // One run across, in the fixed column order. Nothing is filtered: a column that is
     // always zero can be hidden in the spreadsheet, but a column that is sometimes missing
     // cannot be summed at all.
-    private string WideRow(RunState run, List<SlotObservation> takes, Func<string, double> unitPrice)
+    private string WideRow(
+        RunState run,
+        List<SlotObservation> takes,
+        int dealsEntered,
+        List<SlotObservation> dealTakes,
+        Func<string, double> unitPrice)
     {
         var quantities = takes
             .Where(x => x != null && !string.IsNullOrEmpty(x.Currency))
@@ -724,6 +734,8 @@ public class SanctumRunTracker
             run.AreaLevel > 0 ? run.AreaLevel : (object)null,
             DescribeDuration(run.Ended - run.Started),
             Math.Round(chaos, 2),
+            dealsEntered,
+            Math.Round(dealTakes.Sum(x => SlotValue(x, unitPrice)), 2),
         };
 
         values.AddRange(_currencyColumns.Select(currency =>
