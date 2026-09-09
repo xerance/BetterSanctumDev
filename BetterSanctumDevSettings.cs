@@ -14,7 +14,7 @@ namespace BetterSanctumDev;
 
 public class BetterSanctumDevSettings : ISettings
 {
-    private static readonly IReadOnlyList<string> CurrencyTypes = new List<string>
+    public static readonly IReadOnlyList<string> CurrencyTypes = new List<string>
     {
         "Orbs of Alteration",
         "Orbs of Chance",
@@ -956,7 +956,8 @@ public class RunTrackingSettings
 {
     [JsonIgnore]
     public CustomNode Help { get; set; } = SettingsHelp.Block(
-        "Records one run at a time and writes it to Logs/BetterSanctumDev/ on End Run: sanctum-runs.csv holds a row per run, sanctum-run-rooms.csv a row per room and reward slot, sanctum-deals.csv every offer of every deal entered, and sanctum-run-currency.csv the run row again as one row per currency, which is the shape a spreadsheet can pivot and chart.",
+        "Records one run at a time and writes it to Logs/BetterSanctumDev/ on End Run: sanctum-runs.csv holds a row per run, sanctum-run-rooms.csv a row per room and reward slot, sanctum-deals.csv every offer of every deal entered, sanctum-run-currency.csv the run row again as one row per currency, and sanctum-run-wide.csv a row per run with a column per currency.",
+        "The two spreadsheet files hold the same figures in the two shapes a spreadsheet wants: the currency file is what a pivot table groups, the wide file is what a chart plots. The wide file numbers its own runs and its columns never move, so a column sums straight down however many runs are in it. Its chaos column is the whole haul, including the long tail the run summary leaves out.",
         "Rows are marked map or window. Map is what the floor map showed. Window is what the reward window said while you stood in the room, which for a Deal room is the only place its rewards appear at all - the map reads them as empty.",
         "Start and End sit in a window that appears while you are in the Forbidden Sanctum hub. An unfinished run is kept in run-state.json, so restarting the HUD part way through does not lose it.",
         "What a run produced is worked out from the rooms you entered, assuming you took the most valuable slot in each. Nothing reads what you actually clicked, so treat the haul as an estimate - and an optimistic one, since the best slot is usually the end-of-Sanctum deferral, which pays nothing if the run ends early.",

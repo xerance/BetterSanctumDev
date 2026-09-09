@@ -64,21 +64,45 @@ public class SanctumRunTracker
     private const string CurrencyHeader =
         "when,runId,source,currency,quantity,unitChaos,totalChaos";
 
+    // A row per run and a column per currency: the shape a spreadsheet charts without
+    // being reshaped first, where the long file above is the shape it pivots.
+    //
+    // The columns are the fixed currency list rather than what a run happened to pay, so
+    // the header never moves under rows already written. A currency the run did not pay
+    // is a zero, which is what makes a column summable straight down.
+    //
+    // run counts rows already in the file, so it is a stable x axis across runs. chaos is
+    // the whole haul including the long tail the run summary filters out of sight.
+    private readonly IReadOnlyList<string> _currencyColumns;
+
     private readonly string _runPath;
     private readonly string _roomPath;
     private readonly string _dealPath;
     private readonly string _currencyPath;
+    private readonly string _widePath;
     private readonly string _statePath;
     private DateTime _lastSave = DateTime.MinValue;
 
-    public SanctumRunTracker(string runPath, string roomPath, string dealPath, string currencyPath, string statePath)
+    public SanctumRunTracker(
+        string runPath,
+        string roomPath,
+        string dealPath,
+        string currencyPath,
+        string widePath,
+        string statePath,
+        IReadOnlyList<string> currencyColumns)
     {
         _runPath = runPath;
         _roomPath = roomPath;
         _dealPath = dealPath;
         _currencyPath = currencyPath;
+        _widePath = widePath;
         _statePath = statePath;
+        _currencyColumns = currencyColumns ?? new List<string>();
     }
+
+    private string WideHeader =>
+        "when,run,runId,areaLevel,duration,chaos," + string.Join(",", _currencyColumns.Select(Field));
 
     public RunState Current { get; private set; }
 
@@ -650,6 +674,7 @@ public class SanctumRunTracker
             Append(_roomPath, RoomHeader, roomRows);
             Append(_dealPath, DealHeader, dealRows);
             Append(_currencyPath, CurrencyHeader, currencyRows);
+            Append(_widePath, WideHeader, new List<string> { WideRow(run, runTakes, unitPrice) });
             Current = null;
             TryDelete(_statePath);
             LastError = null;
@@ -671,6 +696,50 @@ public class SanctumRunTracker
     private static string Row(params object[] values)
     {
         return string.Join(",", values.Select(Field));
+    }
+
+    // One run across, in the fixed column order. Nothing is filtered: a column that is
+    // always zero can be hidden in the spreadsheet, but a column that is sometimes missing
+    // cannot be summed at all.
+    private string WideRow(RunState run, List<SlotObservation> takes, Func<string, double> unitPrice)
+    {
+        var quantities = takes
+            .Where(x => x != null && !string.IsNullOrEmpty(x.Currency))
+            .GroupBy(x => x.Currency)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Quantity), StringComparer.OrdinalIgnoreCase);
+
+        // The whole haul, long tail included, rather than the filtered figure the run
+        // summary prints. This is the column a run is judged on.
+        var chaos = takes.Sum(x => SlotValue(x, unitPrice));
+
+        var values = new List<object>
+        {
+            CountRows(_widePath),
+            run.RunId,
+            run.AreaLevel > 0 ? run.AreaLevel : (object)null,
+            DescribeDuration(run.Ended - run.Started),
+            Math.Round(chaos, 2),
+        };
+
+        values.AddRange(_currencyColumns.Select(currency =>
+            (object)quantities.GetValueOrDefault(currency, 0)));
+
+        return Row(values.ToArray());
+    }
+
+    // How many runs the file already holds, so a run can carry its own index rather than
+    // relying on a spreadsheet formula that breaks the moment a row is sorted. Zero for a
+    // file that does not exist yet, which makes the first run run 0.
+    private static int CountRows(string path)
+    {
+        try
+        {
+            return File.Exists(path) ? Math.Max(File.ReadAllLines(path).Length - 1, 0) : 0;
+        }
+        catch (Exception)
+        {
+            return 0;
+        }
     }
 
     // The same grouping Describe does, emitted as rows instead of a sentence. Quantities

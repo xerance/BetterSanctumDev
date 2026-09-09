@@ -101,6 +101,11 @@ public class RunState
     public DateTime Started { get; set; }
     public DateTime? Ended { get; set; }
 
+    // The level of the first Sanctum floor entered. Reward quantities scale with it, so
+    // one run's haul cannot be read beside another's without it. Taken once and kept,
+    // since the floors of a run share a level.
+    public int AreaLevel { get; set; }
+
     // Every entry into the hub since the run started. A complete run passes through it
     // once per floor, so the informative number is what this exceeds that baseline by.
     public int HubVisits { get; set; }

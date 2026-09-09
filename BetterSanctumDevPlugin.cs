@@ -81,7 +81,9 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
             LogFilePath("sanctum-run-rooms.csv"),
             LogFilePath("sanctum-deals.csv"),
             LogFilePath("sanctum-run-currency.csv"),
-            LogFilePath("run-state.json"));
+            LogFilePath("sanctum-run-wide.csv"),
+            LogFilePath("run-state.json"),
+            BetterSanctumDevSettings.CurrencyTypes);
         // Picks a run back up after a HUD restart part way through one
         _runTracker.Load();
         return base.Initialise();
@@ -100,6 +102,16 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
         if (Settings.RunTracking.TrackRuns && IsForbiddenSanctumHub(area?.Area?.Id))
         {
             _runTracker.NoteHubVisit();
+        }
+
+        // Taken from the first floor entered rather than the hub, whose level says nothing
+        // about the run. Only once, so a later floor cannot rewrite it.
+        if (_runTracker.Current is { AreaLevel: 0 } run &&
+            area?.Area?.Id is { } areaId &&
+            areaId.StartsWith("Sanctum") &&
+            !IsForbiddenSanctumHub(areaId))
+        {
+            run.AreaLevel = area.Area.AreaLevel;
         }
 
         base.AreaChange(area);
