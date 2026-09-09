@@ -51,6 +51,7 @@ public class BetterSanctumDevSettings : ISettings
         "Orbs of Augmentation",
         "Fracturing Orbs",
         "Volatile Vaal Orbs",
+        "Ancient Orbs",
     };
 
     // JsonIgnore matters here: Newtonsoft appends to an existing collection rather than

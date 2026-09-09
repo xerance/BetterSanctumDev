@@ -101,8 +101,13 @@ public class SanctumRunTracker
         _currencyColumns = currencyColumns ?? new List<string>();
     }
 
+    // "other" is the safety net. The columns are a list written by hand, so a reward
+    // category it does not know about would otherwise be dropped without trace - which is
+    // exactly what happened to Ancient Orbs. Anything without a column of its own is named
+    // there instead, where it is visible rather than missing.
     private string WideHeader =>
-        "when,run,runId,areaLevel,duration,chaos," + string.Join(",", _currencyColumns.Select(Field));
+        "when,run,runId,areaLevel,duration,chaos," +
+        string.Join(",", _currencyColumns.Select(Field)) + ",other";
 
     public RunState Current { get; private set; }
 
@@ -723,6 +728,12 @@ public class SanctumRunTracker
 
         values.AddRange(_currencyColumns.Select(currency =>
             (object)quantities.GetValueOrDefault(currency, 0)));
+
+        var columned = new HashSet<string>(_currencyColumns, StringComparer.OrdinalIgnoreCase);
+        values.Add(string.Join(", ", quantities
+            .Where(x => !columned.Contains(x.Key))
+            .OrderByDescending(x => x.Value)
+            .Select(x => $"{x.Value} {x.Key}")));
 
         return Row(values.ToArray());
     }
