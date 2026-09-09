@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace BetterSanctum;
+namespace BetterSanctumDev;
 
 // Plain data, deliberately free of ExileCore types: the plugin reads the game and hands
 // these over, the tracker merges and persists them. That keeps the merge rules - which

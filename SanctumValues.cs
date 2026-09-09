@@ -1,6 +1,6 @@
 using System;
 
-namespace BetterSanctum;
+namespace BetterSanctumDev;
 
 // Everything a route is scored on is chaos. Rewards are priced directly; rooms and
 // afflictions are priced from an anchor expressed as a percentage of a divine, so the

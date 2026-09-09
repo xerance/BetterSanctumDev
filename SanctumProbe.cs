@@ -6,7 +6,7 @@ using System.Linq;
 using ExileCore;
 using ExileCore.PoEMemory.Elements.Sanctum;
 
-namespace BetterSanctum;
+namespace BetterSanctumDev;
 
 // A throwaway investigation aid for the two things the run tracker needs and the room
 // dump cannot reach: what the hub area is actually called, and whether the game exposes

@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 
-namespace BetterSanctum;
+namespace BetterSanctumDev;
 
 // Appends one row per distinct reward observation so a session's worth of Sanctum runs
 // builds up a table to eyeball. Deduplicated in memory, so leaving it on and reopening

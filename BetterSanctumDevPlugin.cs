@@ -19,7 +19,7 @@ using ImGuiNET;
 using SharpDX;
 using Vector2 = System.Numerics.Vector2;
 
-namespace BetterSanctum;
+namespace BetterSanctumDev;
 
 public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSettings>
 {

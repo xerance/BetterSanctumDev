@@ -3,7 +3,7 @@ using System.Linq;
 using ExileCore.PoEMemory.Elements.Sanctum;
 using ExileCore.PoEMemory.FilesInMemory.Sanctum;
 
-namespace BetterSanctum;
+namespace BetterSanctumDev;
 
 public static class Extensions
 {

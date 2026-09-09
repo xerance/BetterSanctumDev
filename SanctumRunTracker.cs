@@ -5,7 +5,7 @@ using System.IO;
 using System.Linq;
 using Newtonsoft.Json;
 
-namespace BetterSanctum;
+namespace BetterSanctumDev;
 
 // Per-run statistics. The map alone says everything a room offers - all three slots, and
 // the measured quantity for each - so nothing here reads what was actually clicked. What

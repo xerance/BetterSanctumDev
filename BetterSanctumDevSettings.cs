@@ -10,7 +10,7 @@ using ImGuiNET;
 using Newtonsoft.Json;
 using Color = SharpDX.Color;
 
-namespace BetterSanctum;
+namespace BetterSanctumDev;
 
 public class BetterSanctumDevSettings : ISettings
 {
