@@ -241,18 +241,18 @@ public class BetterSanctumDevSettings : ISettings
                      "\n0 hides nothing." +
                      "\n\nAnything else is that many chaos, flat, and stays where you put it - so it is worth revisiting when prices move.");
 
-                ImGui.TextDisabled("Every axis is scored in chaos. Rewards are priced; rooms and afflictions are priced from an anchor set in Routing.");
+                DisabledText("Every axis is scored in chaos. Rewards are priced; rooms and afflictions are priced from an anchor set in Routing.");
                 Hint("Currency has no tiers. A reward is worth its price times the quantity of the slot, and its band is read off that figure, so the only setting is the price override below." +
                      "\nRoom 0-10: 0 is worth the room anchor, 5 is worth nothing, 10 costs the anchor. Unrated room types sit at 5." +
                      "\nAffliction 0-6: 0 costs nothing, 5 costs the affliction anchor, 6 is never walked into unless a reward past Must Take Percent Of Divine lies beyond it. Unrated afflictions sit at 3, since an unrated one is a cost of unknown size rather than a free one.");
 
                 if (ImGui.TreeNode("Currency price overrides"))
                 {
-                    ImGui.TextDisabled("A reward's band is read off what it is worth, so there is nothing to rate. Override the chaos each one is worth where you disagree with the market, or set 0 to ignore it.");
+                    DisabledText("A reward's band is read off what it is worth, so there is nothing to rate. Override the chaos each one is worth where you disagree with the market, or set 0 to ignore it.");
                     ImGui.InputTextWithHint("##CurrencyFilter", "Filter", ref currencyFilter, 100);
                     var (currencyTypes, fromGameFiles) = GetKnownCurrencyTypes();
-                    ImGui.TextDisabled($"{currencyTypes.Count} currencies ({(fromGameFiles ? "from game files" : "fallback list")})");
-                    ImGui.TextDisabled("Blank or -1 leaves the price alone. The value is per unit; the quantity of the slot is applied on top.");
+                    DisabledText($"{currencyTypes.Count} currencies ({(fromGameFiles ? "from game files" : "fallback list")})");
+                    DisabledText("Blank or -1 leaves the price alone. The value is per unit; the quantity of the slot is applied on top.");
 
                     foreach (var type in currencyTypes)
                     {
@@ -282,7 +282,7 @@ public class BetterSanctumDevSettings : ISettings
 
                 if (ImGui.TreeNode("Room tiering"))
                 {
-                    ImGui.TextDisabled("Applies to both the fight room and the reward room, so a room is counted twice from this one list.");
+                    DisabledText("Applies to both the fight room and the reward room, so a room is counted twice from this one list.");
                     ImGui.InputTextWithHint("##RoomFilter", "Filter", ref roomFilter, 100);
                     foreach (var type in RoomTypes.Where(t => t.Contains(roomFilter, StringComparison.InvariantCultureIgnoreCase)))
                     {
@@ -298,7 +298,7 @@ public class BetterSanctumDevSettings : ISettings
 
                 if (ImGui.TreeNode("Affliction tiering"))
                 {
-                    ImGui.TextDisabled("Filter matches names and descriptions, and several words all have to match.");
+                    DisabledText("Filter matches names and descriptions, and several words all have to match.");
                     ImGui.InputTextWithHint("##AfflictionFilter", "Filter", ref afflictionFilter, 100);
                     // Name and description are searched as one string, so terms can span both
                     foreach (var (type, description) in AfflictionTypes.Where(t => MatchesFilter($"{t.Item1} {t.Item2}", afflictionFilter)))
@@ -313,7 +313,7 @@ public class BetterSanctumDevSettings : ISettings
                         ImGui.TextDisabled("(?)");
                         if (ImGui.IsItemHovered())
                         {
-                            ImGui.SetTooltip(description);
+                            Tooltip(description);
                         }
                     }
 
@@ -628,8 +628,32 @@ public class BetterSanctumDevSettings : ISettings
         ImGui.TextDisabled("(?)");
         if (ImGui.IsItemHovered())
         {
-            ImGui.SetTooltip(text);
+            Tooltip(text);
         }
+    }
+
+    // ImGui's text calls take a printf format string, so a literal percent sign in any of
+    // this prose is read as a specifier and swallows what follows it: "10% of a Divine
+    // Orb" printed as "100f a Divine Orb". Affliction descriptions are full of them.
+    // TextUnformatted does no formatting at all, which is what every one of these wants.
+    //
+    // Tooltips are wrapped as well. Unwrapped, a paragraph is laid out as one line and
+    // the tooltip grows wider than the screen.
+    private static void Tooltip(string text)
+    {
+        ImGui.BeginTooltip();
+        ImGui.PushTextWrapPos(ImGui.GetFontSize() * 40f);
+        ImGui.TextUnformatted(text);
+        ImGui.PopTextWrapPos();
+        ImGui.EndTooltip();
+    }
+
+    // Same colour as TextDisabled, without the format string
+    private static void DisabledText(string text)
+    {
+        ImGui.PushStyleColor(ImGuiCol.Text, ImGui.GetStyle().Colors[(int)ImGuiCol.TextDisabled]);
+        ImGui.TextUnformatted(text);
+        ImGui.PopStyleColor();
     }
 
     private (string profileName, ProfileContent profile) GetCurrentProfile()
@@ -763,7 +787,11 @@ public static class SettingsHelp
                 foreach (var line in lines)
                 {
                     ImGui.PushStyleColor(ImGuiCol.Text, Color.Gray.ToImgui());
-                    ImGui.TextWrapped(line);
+                    // TextWrapped is a format call, so a percent sign in the prose would
+                    // be read as a specifier. Wrap by hand and print the string as it is.
+                    ImGui.PushTextWrapPos(0f);
+                    ImGui.TextUnformatted(line);
+                    ImGui.PopTextWrapPos();
                     ImGui.PopStyleColor();
                 }
 

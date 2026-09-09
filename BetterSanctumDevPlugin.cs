@@ -869,11 +869,11 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
         if (_runTracker.IsRunning)
         {
             var run = _runTracker.Current;
-            ImGui.Text($"Run {run.RunId}");
-            ImGui.Text($"Started {run.Started:HH:mm:ss}, {(DateTime.Now - run.Started).TotalMinutes:0} min");
-            ImGui.Text($"Floors seen: {string.Join(", ", run.Floors.Keys.OrderBy(x => x))}");
-            ImGui.Text($"Rooms recorded: {run.Floors.Values.Sum(x => x.Rooms.Count)}");
-            ImGui.Text($"Hub visits: {run.HubVisits}");
+            ImGui.TextUnformatted($"Run {run.RunId}");
+            ImGui.TextUnformatted($"Started {run.Started:HH:mm:ss}, {(DateTime.Now - run.Started).TotalMinutes:0} min");
+            ImGui.TextUnformatted($"Floors seen: {string.Join(", ", run.Floors.Keys.OrderBy(x => x))}");
+            ImGui.TextUnformatted($"Rooms recorded: {run.Floors.Values.Sum(x => x.Rooms.Count)}");
+            ImGui.TextUnformatted($"Hub visits: {run.HubVisits}");
 
             if (ImGui.Button("End Run (write CSV)"))
             {
@@ -896,7 +896,7 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
         }
         else
         {
-            ImGui.Text("No run in progress.");
+            ImGui.TextUnformatted("No run in progress.");
             if (ImGui.Button("Start Run"))
             {
                 _runTracker.StartRun();
@@ -905,7 +905,11 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
 
         if (_runTracker.LastError is { Length: > 0 } error)
         {
-            ImGui.TextColored(new System.Numerics.Vector4(1, 0.4f, 0.4f, 1), error);
+            // Not TextColored: it formats, and an exception message is the one string
+            // here that really can arrive with a percent sign in it.
+            ImGui.PushStyleColor(ImGuiCol.Text, new System.Numerics.Vector4(1, 0.4f, 0.4f, 1));
+            ImGui.TextUnformatted(error);
+            ImGui.PopStyleColor();
         }
 
         ImGui.End();
