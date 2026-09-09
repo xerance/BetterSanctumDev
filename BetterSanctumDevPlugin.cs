@@ -80,6 +80,7 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
             LogFilePath("sanctum-runs.csv"),
             LogFilePath("sanctum-run-rooms.csv"),
             LogFilePath("sanctum-deals.csv"),
+            LogFilePath("sanctum-run-currency.csv"),
             LogFilePath("run-state.json"));
         // Picks a run back up after a HUD restart part way through one
         _runTracker.Load();
@@ -886,6 +887,34 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
         return ResolvePriceLookup() == null ? null : UnitPriceForCurrency;
     }
 
+    // The same rule PreventLastOffer draws on screen, so the tracked haul matches what the
+    // overlay told you to take. Null on an ordinary run, where every slot is fair game.
+    //
+    // On a duplicate run the end-of-Sanctum slot is never worth taking, and on floors 3
+    // and 4 the end-of-floor slot is not either - the relic duplicates the final reward,
+    // so anything deferred past it is currency you walk away from. A Divine Orb or a
+    // Mirror is the exception, being the reward the run exists to duplicate.
+    //
+    // Floor 4 is taken on the floor alone. The overlay also checks for the final chest
+    // having spawned, and a finished run cannot be asked about an entity that is long gone.
+    private Func<int, int, string, bool> ResolveTakeableSlotRule()
+    {
+        if (!Settings.DuplicateRun)
+        {
+            return null;
+        }
+
+        return (floor, slot, currency) =>
+        {
+            if (currency != null && Settings.CurrencyDuplicate.Any(currency.Contains))
+            {
+                return true;
+            }
+
+            return floor >= 3 ? slot is not (1 or 2) : slot != 2;
+        };
+    }
+
     // Shown in the hub only, which is where a run both starts and ends, and where nothing
     // else on screen is competing for attention.
     private void DrawRunTrackerWindow()
@@ -907,7 +936,7 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
 
             if (ImGui.Button("End Run (write CSV)"))
             {
-                var floors = _runTracker.EndRun(ResolveUnitPriceByName());
+                var floors = _runTracker.EndRun(ResolveUnitPriceByName(), ResolveTakeableSlotRule());
                 if (floors < 0)
                 {
                     LogError($"[BetterSanctum] could not write the run: {_runTracker.LastError}", 30);

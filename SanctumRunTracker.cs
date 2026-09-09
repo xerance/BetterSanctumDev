@@ -54,17 +54,29 @@ public class SanctumRunTracker
     private const string DealHeader =
         "when,runId,floor,layer,room,slot,currency,quantity,chaos,taken,offerText";
 
+    // The run row again, one row per currency instead of three cells of comma-joined text.
+    // A spreadsheet cannot pivot or chart "3 Volatile Vaal Orbs, 1 Divine Orbs" - it is one
+    // string - so the same figures are written a second time in a shape it can group by.
+    //
+    // source is "run" for the haul, "deal" for the part of it that came out of a deal, and
+    // "seen" for high rewards the floor showed whether or not they were reachable. Summing
+    // run and deal together double counts, since deal is part of run.
+    private const string CurrencyHeader =
+        "when,runId,source,currency,quantity,unitChaos,totalChaos";
+
     private readonly string _runPath;
     private readonly string _roomPath;
     private readonly string _dealPath;
+    private readonly string _currencyPath;
     private readonly string _statePath;
     private DateTime _lastSave = DateTime.MinValue;
 
-    public SanctumRunTracker(string runPath, string roomPath, string dealPath, string statePath)
+    public SanctumRunTracker(string runPath, string roomPath, string dealPath, string currencyPath, string statePath)
     {
         _runPath = runPath;
         _roomPath = roomPath;
         _dealPath = dealPath;
+        _currencyPath = currencyPath;
         _statePath = statePath;
     }
 
@@ -344,13 +356,26 @@ public class SanctumRunTracker
             .ToList();
     }
 
-    private static SlotObservation AssumedTake(RoomObservation room, Func<string, double> unitPrice)
+    // canTake is the run type's own rule about which slots are worth taking at all. On a
+    // duplicate run the deferred slots are crossed out in the offer window, so assuming
+    // the richest slot regardless would credit the run with currency it would never have
+    // taken - the exact reward the overlay was telling you to walk past.
+    private static SlotObservation AssumedTake(
+        RoomObservation room,
+        Func<string, double> unitPrice,
+        Func<int, int, string, bool> canTake,
+        int floor)
     {
         SlotObservation best = null;
         var bestScore = double.MinValue;
         foreach (var slot in TakeableSlots(room))
         {
             if (string.IsNullOrEmpty(slot.Currency))
+            {
+                continue;
+            }
+
+            if (canTake != null && !canTake(floor, slot.Slot, slot.Currency))
             {
                 continue;
             }
@@ -385,9 +410,24 @@ public class SanctumRunTracker
     // currency because none of them has a price would be worse than the clutter.
     private const double HaulFloorChaos = 5.0;
 
+    // Band 1 is a divine or more, band 0 five divine or more. What counts as a reward
+    // worth noting having seen, whether or not a route could reach it.
+    private const int HighRewardBand = 1;
+
     private static string DescribeHaul(IEnumerable<SlotObservation> taken, Func<string, double> unitPrice)
     {
-        var grouped = taken
+        return Describe(taken, unitPrice,
+            (currency, unit) => unitPrice == null || currency == "Chaos Orbs" || unit >= HaulFloorChaos);
+    }
+
+    // Grouped by currency and summed, richest first. What counts as worth listing is the
+    // caller's, since the run haul and the high rewards seen are cut at different lines.
+    private static string Describe(
+        IEnumerable<SlotObservation> slots,
+        Func<string, double> unitPrice,
+        Func<string, double, bool> keep)
+    {
+        var grouped = slots
             .Where(x => x != null && !string.IsNullOrEmpty(x.Currency))
             .GroupBy(x => x.Currency)
             .Select(g => new
@@ -396,7 +436,7 @@ public class SanctumRunTracker
                 Quantity = g.Sum(x => x.Quantity),
                 Unit = unitPrice?.Invoke(g.Key) ?? 0,
             })
-            .Where(x => unitPrice == null || x.Currency == "Chaos Orbs" || x.Unit >= HaulFloorChaos)
+            .Where(x => keep(x.Currency, x.Unit))
             .OrderByDescending(x => x.Unit * x.Quantity)
             .ThenByDescending(x => x.Quantity)
             .Select(x => $"{x.Quantity} {x.Currency}");
@@ -420,7 +460,7 @@ public class SanctumRunTracker
 
     // Writes the run out and clears it. Returns how many floor rows were written, or -1 if
     // nothing could be written, so the caller can say so rather than silently succeeding.
-    public int EndRun(Func<string, double> unitPrice)
+    public int EndRun(Func<string, double> unitPrice, Func<int, int, string, bool> canTake = null)
     {
         if (Current == null)
         {
@@ -444,7 +484,7 @@ public class SanctumRunTracker
             var runTakes = new List<SlotObservation>();
             var dealTakes = new List<SlotObservation>();
             var afflictionFloors = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            var highRewardsSeen = 0;
+            var highRewardsSeen = new List<SlotObservation>();
             var dealsEntered = 0;
 
             foreach (var floor in run.Floors.Values.OrderBy(x => x.Floor))
@@ -465,19 +505,25 @@ public class SanctumRunTracker
                     // a room is entered, so the last room of a floor never appears there.
                     var isEntered = entered.Contains(key) || room.Offers.Count > 0;
                     var onRoute = route.Contains(key);
-                    var assumed = isEntered ? AssumedTake(room, unitPrice) : null;
+                    var assumed = isEntered ? AssumedTake(room, unitPrice, canTake, floor.Floor) : null;
                     if (assumed != null)
                     {
                         runTakes.Add(assumed);
                     }
-                    // Counted whether or not a route could reach it: a floor can show more
 
-                    // than one walk can collect, and what was on offer is the question.
-                    // Per room rather than per slot, since one room pays one reward however
-                    // many of its slots are worth having.
-                    if (TakeableSlots(room).Any(x => x.Tier <= 1))
+                    // Collected whether or not a route could reach it: a floor can show
+                    // more than one walk can collect, and what was on offer is the
+                    // question. Per room rather than per slot, since one room pays one
+                    // reward however many of its slots are worth having - and the richest
+                    // of them regardless of the run type, since this is what the floor
+                    // held rather than what you would have taken.
+                    var richest = TakeableSlots(room)
+                        .Where(x => x.Tier <= HighRewardBand)
+                        .OrderByDescending(x => SlotValue(x, unitPrice))
+                        .FirstOrDefault();
+                    if (richest != null)
                     {
-                        highRewardsSeen++;
+                        highRewardsSeen.Add(richest);
                     }
                     if (isEntered && room.Affliction != null)
 
@@ -538,7 +584,7 @@ public class SanctumRunTracker
                              entered.Contains(FloorObservation.Key(x.Layer, x.Room))))
                 {
                     dealsEntered++;
-                    var dealTake = AssumedTake(deal, unitPrice);
+                    var dealTake = AssumedTake(deal, unitPrice, canTake, floor.Floor);
                     if (dealTake != null)
                     {
                         dealTakes.Add(dealTake);
@@ -550,7 +596,7 @@ public class SanctumRunTracker
                 foreach (var deal in floor.Rooms.Values.Where(x =>
                              x.IsDeal && entered.Contains(FloorObservation.Key(x.Layer, x.Room))))
                 {
-                    var best = AssumedTake(deal, unitPrice);
+                    var best = AssumedTake(deal, unitPrice, canTake, floor.Floor);
                     foreach (var offer in deal.Offers.OrderBy(x => x.Slot))
                     {
                         var slot = new SlotObservation
@@ -587,13 +633,23 @@ public class SanctumRunTracker
                 run.RunId,
                 DescribeDuration(run.Ended - run.Started),
                 DescribeHaul(runTakes, unitPrice),
-                dealsEntered, DescribeHaul(dealTakes, unitPrice), highRewardsSeen,
+                // Already cut at a divine by band, so nothing further is filtered out
+                dealsEntered, DescribeHaul(dealTakes, unitPrice),
+                Describe(highRewardsSeen, unitPrice, (_, _) => true),
                 goldenFloor > 0, goldenFloor > 0 ? goldenFloor : (object)null,
                 mirrorFloor > 0, mirrorFloor > 0 ? mirrorFloor : (object)null));
+
+            var currencyRows = new List<string>();
+            currencyRows.AddRange(CurrencyRows(run.RunId, "run", runTakes, unitPrice,
+                (currency, unit) => unitPrice == null || currency == "Chaos Orbs" || unit >= HaulFloorChaos));
+            currencyRows.AddRange(CurrencyRows(run.RunId, "deal", dealTakes, unitPrice,
+                (currency, unit) => unitPrice == null || currency == "Chaos Orbs" || unit >= HaulFloorChaos));
+            currencyRows.AddRange(CurrencyRows(run.RunId, "seen", highRewardsSeen, unitPrice, (_, _) => true));
 
             Append(_runPath, RunHeader, runRows);
             Append(_roomPath, RoomHeader, roomRows);
             Append(_dealPath, DealHeader, dealRows);
+            Append(_currencyPath, CurrencyHeader, currencyRows);
             Current = null;
             TryDelete(_statePath);
             LastError = null;
@@ -615,6 +671,33 @@ public class SanctumRunTracker
     private static string Row(params object[] values)
     {
         return string.Join(",", values.Select(Field));
+    }
+
+    // The same grouping Describe does, emitted as rows instead of a sentence. Quantities
+    // are summed per currency so a run contributes one row per currency per source, which
+    // is the shape a pivot table wants.
+    private static IEnumerable<string> CurrencyRows(
+        string runId,
+        string source,
+        IEnumerable<SlotObservation> slots,
+        Func<string, double> unitPrice,
+        Func<string, double, bool> keep)
+    {
+        return slots
+            .Where(x => x != null && !string.IsNullOrEmpty(x.Currency))
+            .GroupBy(x => x.Currency)
+            .Select(g => new
+            {
+                Currency = g.Key,
+                Quantity = g.Sum(x => x.Quantity),
+                Unit = unitPrice?.Invoke(g.Key) ?? 0,
+            })
+            .Where(x => keep(x.Currency, x.Unit))
+            .OrderByDescending(x => x.Unit * x.Quantity)
+            .Select(x => Row(
+                runId, source, x.Currency, x.Quantity,
+                Math.Round(x.Unit, 2), Math.Round(x.Unit * x.Quantity, 2)))
+            .ToList();
     }
 
     private static string Field(object value)
