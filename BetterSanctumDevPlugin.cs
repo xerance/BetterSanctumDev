@@ -129,9 +129,17 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
         return _currencyPrice;
     }
 
+    // The reward categories are keyed by the plural name a reward reports, so this is the
+    // key every other price lookup here uses.
+    private const string DivineCurrencyName = "Divine Orbs";
+
     // Read from the game's own reward categories rather than hardcoded: Divine Orbs is one
     // of them, so its chaos price is the conversion rate. Cached, since it moves slowly and
     // this is called per reward per frame. Zero means unknown, and prices stay in chaos.
+    //
+    // Found down the same path as every other reward, by CurrencyName. Scanning for a
+    // BaseType named "Divine Orb" instead matched nothing, so the rate read as zero and
+    // every anchor quietly fell back while ordinary reward prices went on working.
     private double GetDivineChaosRate()
     {
         if (_divineChaosRate > 0 && _sinceDivineRateStopwatch.Elapsed < TimeSpan.FromSeconds(60))
@@ -139,34 +147,28 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
             return _divineChaosRate;
         }
 
-        var lookup = ResolvePriceLookup();
-        var categories = RemoteMemoryObject.pTheGame?.Files?.SanctumDeferredRewardCategories?.EntriesList;
-        if (lookup == null || categories == null)
+        var baseType = FindDivineBaseType();
+        if (baseType == null)
         {
             return 0;
         }
 
         _sinceDivineRateStopwatch.Restart();
-        foreach (var category in categories)
+        _divineChaosRate = PriceOf(baseType);
+        return _divineChaosRate;
+    }
+
+    // By reward name first, since that is the key the table is built on, and by base item
+    // name second in case a league renames the category out from under it.
+    private static BaseItemType FindDivineBaseType()
+    {
+        if (FindCategoryBaseType(DivineCurrencyName) is { } byCurrencyName)
         {
-            if (category.BaseType?.BaseName != "Divine Orb")
-            {
-                continue;
-            }
-
-            try
-            {
-                _divineChaosRate = lookup(category.BaseType);
-            }
-            catch (Exception)
-            {
-                _divineChaosRate = 0;
-            }
-
-            break;
+            return byCurrencyName;
         }
 
-        return _divineChaosRate;
+        var categories = RemoteMemoryObject.pTheGame?.Files?.SanctumDeferredRewardCategories?.EntriesList;
+        return categories?.FirstOrDefault(x => x?.BaseType?.BaseName == "Divine Orb")?.BaseType;
     }
 
     // Why there is no divine price, for the settings hint to say which of the three
@@ -184,9 +186,14 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
             return "the game's Sanctum reward table has not loaded yet";
         }
 
+        if (FindDivineBaseType() == null)
+        {
+            return "the Sanctum reward table has no Divine Orbs entry to price";
+        }
+
         return GetDivineChaosRate() > 0
             ? null
-            : "the price plugin has no price for a Divine Orb";
+            : "the price plugin returned no price for a Divine Orb";
     }
 
     private string FormatPrice(double chaos)
