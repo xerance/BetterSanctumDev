@@ -614,14 +614,24 @@ public class BetterSanctumDevSettings : ISettings
     [JsonIgnore]
     public Func<double> DivineChaosProvider { get; set; }
 
+    // Says which part is missing when there is no price, rather than leaving the hint to
+    // guess at one of the three reasons.
+    [JsonIgnore]
+    public Func<string> DivinePriceStatusProvider { get; set; }
+
     private string DescribeDefaultHideChaos()
     {
         var market = DivineChaosProvider?.Invoke() ?? 0;
         var divine = market > 0 ? market : Routing.DivineChaosFallback.Value;
         var chaos = divine * DefaultHidePercentOfDivine / 100.0;
-        return market > 0
-            ? $", about {chaos:0}c with a divine at {divine:0}c"
-            : $", about {chaos:0}c against the fallback divine price of {divine:0}c, no price plugin having answered";
+        if (market > 0)
+        {
+            return $", about {chaos:0}c with a divine at {divine:0}c";
+        }
+
+        var reason = DivinePriceStatusProvider?.Invoke();
+        return $", about {chaos:0}c against the fallback divine price of {divine:0}c" +
+               (reason is { Length: > 0 } ? $", because {reason}" : "");
     }
 
     // Hover marker after the control it explains

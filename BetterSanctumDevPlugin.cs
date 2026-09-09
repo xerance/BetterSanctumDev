@@ -69,8 +69,10 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
     public override bool Initialise()
     {
         // Lets a settings hint quote the chaos figure a percentage comes to. The market
-        // rate rather than DivineChaos, so the hint can tell a real price from the fallback.
+        // rate rather than DivineChaos, so the hint can tell a real price from the fallback,
+        // and the reason alongside it so it can say what is missing when there is none.
         Settings.DivineChaosProvider = GetDivineChaosRate;
+        Settings.DivinePriceStatusProvider = DivinePriceUnavailableReason;
         _effectHelper = new EffectHelper(GameController, Graphics, Settings);
         _rewardTracker = new RewardTracker(LogFilePath("sanctum-rewards.csv"));
         _probe = new SanctumProbe(LogFilePath("sanctum-probe.txt"));
@@ -165,6 +167,26 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
         }
 
         return _divineChaosRate;
+    }
+
+    // Why there is no divine price, for the settings hint to say which of the three
+    // things is missing rather than blaming the price plugin for all of them. Null when
+    // there is nothing wrong.
+    private string DivinePriceUnavailableReason()
+    {
+        if (ResolvePriceLookup() == null)
+        {
+            return "nothing is answering the NinjaPrice.GetBaseItemTypeValue bridge";
+        }
+
+        if (RemoteMemoryObject.pTheGame?.Files?.SanctumDeferredRewardCategories?.EntriesList == null)
+        {
+            return "the game's Sanctum reward table has not loaded yet";
+        }
+
+        return GetDivineChaosRate() > 0
+            ? null
+            : "the price plugin has no price for a Divine Orb";
     }
 
     private string FormatPrice(double chaos)
