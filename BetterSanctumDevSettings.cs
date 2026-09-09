@@ -608,17 +608,20 @@ public class BetterSanctumDevSettings : ISettings
     }
 
     // The plugin owns the divine price, so the settings borrow it to show what a
-    // percentage actually comes to. Unset until Initialise runs, and unset is fine: the
-    // hint drops the figure rather than inventing one.
+    // percentage actually comes to. This is the market rate and zero when there is none,
+    // rather than the figure routing settles on, so the hint can say which of the two it
+    // is quoting instead of presenting the fallback as a price somebody paid.
     [JsonIgnore]
     public Func<double> DivineChaosProvider { get; set; }
 
     private string DescribeDefaultHideChaos()
     {
-        var divine = DivineChaosProvider?.Invoke() ?? 0;
-        return divine > 0
-            ? $", about {divine * DefaultHidePercentOfDivine / 100.0:0}c with a divine at {divine:0}c"
-            : "";
+        var market = DivineChaosProvider?.Invoke() ?? 0;
+        var divine = market > 0 ? market : Routing.DivineChaosFallback.Value;
+        var chaos = divine * DefaultHidePercentOfDivine / 100.0;
+        return market > 0
+            ? $", about {chaos:0}c with a divine at {divine:0}c"
+            : $", about {chaos:0}c against the fallback divine price of {divine:0}c, no price plugin having answered";
     }
 
     // Hover marker after the control it explains

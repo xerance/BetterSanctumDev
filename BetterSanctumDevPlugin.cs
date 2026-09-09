@@ -68,8 +68,9 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
 
     public override bool Initialise()
     {
-        // Lets a settings hint quote the chaos figure a percentage comes to
-        Settings.DivineChaosProvider = DivineChaos;
+        // Lets a settings hint quote the chaos figure a percentage comes to. The market
+        // rate rather than DivineChaos, so the hint can tell a real price from the fallback.
+        Settings.DivineChaosProvider = GetDivineChaosRate;
         _effectHelper = new EffectHelper(GameController, Graphics, Settings);
         _rewardTracker = new RewardTracker(LogFilePath("sanctum-rewards.csv"));
         _probe = new SanctumProbe(LogFilePath("sanctum-probe.txt"));
