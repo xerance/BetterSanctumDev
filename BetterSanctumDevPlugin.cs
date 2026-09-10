@@ -1847,8 +1847,26 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
         }
 
         var unit = UnitPriceFor(reward);
-        return unit > 0
-            ? unit * quantity
+        if (unit > 0)
+        {
+            return unit * quantity;
+        }
+
+        // A price source that is answering and has no price for this one is not ignorance,
+        // it is an answer: poe.ninja lists everything with a market, so a reward it has
+        // never heard of has none. Orb of Binding is the case in point - it appears in the
+        // game's reward table and nowhere in the price data at all.
+        //
+        // Standing in the unknown reward figure here made a stack worth five hundredths of
+        // a chaos read as a fifth of a divine: coloured as a decent reward, tiered as one,
+        // and worth routing towards. Worth nothing is the honest answer, and it falls under
+        // any threshold on its own rather than needing an override typed for each one.
+        //
+        // Only when a price source is answering at all. With none, every reward would read
+        // as worthless and routing would have nothing left to separate rooms by, so the
+        // unknown figure still stands in.
+        return ResolvePriceLookup() != null
+            ? 0
             : AnchorChaos(Settings.Routing.UnknownRewardPercentOfDivine.Value);
     }
 
