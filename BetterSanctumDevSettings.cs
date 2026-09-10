@@ -1015,6 +1015,9 @@ public class RunTrackingSettings
     [JsonIgnore]
     public Action OpenTrackingFolder { get; set; }
 
+    [JsonIgnore]
+    public Action ExportWorkbook { get; set; }
+
     public TrackingProfile Profile()
     {
         var name = CurrentProfile != null && Profiles.ContainsKey(CurrentProfile)
@@ -1062,6 +1065,15 @@ public class RunTrackingSettings
                 }
 
                 SettingsHelp.Hint("Opens the folder this profile writes into. Each profile has one of its own, since a profile is a set of columns and two sets cannot share a file.");
+
+                ImGui.SameLine();
+                if (ImGui.Button("Export xlsx##exportTracking"))
+                {
+                    ExportWorkbook?.Invoke();
+                }
+
+                SettingsHelp.Hint("Rebuilds sanctum-run-wide.xlsx from the wide CSV: header frozen, columns sized, numbers written as numbers. Without runId, which is in the CSV so the other files can join on it and has nothing to join to here." +
+                     "\n\nThe CSV stays the record. It is appended a line at a time, where a workbook is rewritten whole - so this is generated on demand and can be deleted and rebuilt whenever.");
 
                 foreach (var key in Profiles.Keys.OrderBy(x => x).ToList())
                 {

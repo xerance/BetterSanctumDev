@@ -87,6 +87,29 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
 
     private string TrackingFilePath(string fileName) => Path.Combine(TrackingFolder(), fileName);
 
+    // The wide file as a workbook: frozen header, sized columns, numbers as numbers. Built
+    // from the CSV on demand rather than written alongside it, so the record stays a file
+    // that is appended a line at a time.
+    //
+    // runId is left out. It is in the CSV because the other three files join on it, and
+    // there is nothing in a workbook to join to.
+    private void ExportTrackingWorkbook()
+    {
+        var written = SanctumWorkbook.Write(
+            TrackingFilePath("sanctum-run-wide.csv"),
+            TrackingFilePath("sanctum-run-wide.xlsx"),
+            new HashSet<string> { "runId" },
+            out var error);
+
+        if (written < 0)
+        {
+            LogError($"[BetterSanctumDev] could not export the workbook: {error}", 30);
+            return;
+        }
+
+        LogMessage($"[BetterSanctumDev] exported {written} rows to sanctum-run-wide.xlsx", 30);
+    }
+
     private void OpenTrackingFolder()
     {
         try
@@ -108,6 +131,7 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
         Settings.DivinePriceStatusProvider = DivinePriceUnavailableReason;
         Settings.RunTracking.TrackedFloorProvider = TrackedCurrencyFloor;
         Settings.RunTracking.OpenTrackingFolder = OpenTrackingFolder;
+        Settings.RunTracking.ExportWorkbook = ExportTrackingWorkbook;
         _effectHelper = new EffectHelper(GameController, Graphics, Settings);
         _rewardTracker = new RewardTracker(LogFilePath("sanctum-rewards.csv"));
         _probe = new SanctumProbe(LogFilePath("sanctum-probe.txt"));
