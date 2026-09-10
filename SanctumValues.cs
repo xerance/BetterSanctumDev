@@ -15,7 +15,7 @@ public static class CurrencyNames
     private static readonly IReadOnlyDictionary<string, string> Short = new Dictionary<string, string>
     {
         ["Mirrors of Kalandra"] = "mirror",
-        ["Volatile Vaal Orbs"] = "volatile vaal",
+        ["Volatile Vaal Orbs"] = "volatile",
         ["Fracturing Orbs"] = "fracturing",
         ["Divine Orbs"] = "divine",
         ["Veiled Chaos Orbs"] = "veiled chaos",

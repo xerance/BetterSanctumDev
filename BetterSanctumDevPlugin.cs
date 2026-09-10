@@ -95,15 +95,31 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
     // there is nothing in a workbook to join to.
     private void ExportTrackingWorkbook()
     {
+        // Every currency, not only the tracked ones: the sheet is a price list, and one
+        // that only held what happens to be tracked today could not total a file written
+        // when something else was.
+        var prices = BetterSanctumDevSettings.CurrencyTypes
+            .Select(x => (Currency: x, Chaos: Math.Round(UnitPriceForCurrency(x), 2)))
+            .ToList();
+
         var written = SanctumWorkbook.Write(
             TrackingFilePath("sanctum-run-wide.csv"),
             TrackingFilePath("sanctum-run-wide.xlsx"),
             new HashSet<string> { "runId" },
+            GameController?.IngameState?.ServerData?.League,
+            prices,
             out var error);
 
         if (written < 0)
         {
             LogError($"[BetterSanctumDev] could not export the workbook: {error}", 30);
+            return;
+        }
+
+        // Written, but with something in it worth knowing about
+        if (error is { Length: > 0 })
+        {
+            LogError($"[BetterSanctumDev] exported {written} rows, but {error}", 30);
             return;
         }
 
