@@ -66,6 +66,39 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
         return Path.Combine(directory, fileName);
     }
 
+    // Under tracking/, and under the selected profile within it. A profile is a set of
+    // columns, and two sets cannot share a file, so each keeps its own record.
+    private string TrackingFolder()
+    {
+        var directory = Path.Combine(
+            AppDomain.CurrentDomain.BaseDirectory, "Logs", "BetterSanctumDev",
+            "tracking", Settings.RunTracking.ProfileFolder());
+
+        try
+        {
+            Directory.CreateDirectory(directory);
+            return directory;
+        }
+        catch (Exception)
+        {
+            return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs", "BetterSanctumDev");
+        }
+    }
+
+    private string TrackingFilePath(string fileName) => Path.Combine(TrackingFolder(), fileName);
+
+    private void OpenTrackingFolder()
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(TrackingFolder()) { UseShellExecute = true });
+        }
+        catch (Exception e)
+        {
+            LogError($"[BetterSanctumDev] could not open the tracking folder: {e.Message}", 30);
+        }
+    }
+
     public override bool Initialise()
     {
         // Lets a settings hint quote the chaos figure a percentage comes to. The market
@@ -74,16 +107,13 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
         Settings.DivineChaosProvider = GetDivineChaosRate;
         Settings.DivinePriceStatusProvider = DivinePriceUnavailableReason;
         Settings.RunTracking.TrackedFloorProvider = TrackedCurrencyFloor;
+        Settings.RunTracking.OpenTrackingFolder = OpenTrackingFolder;
         _effectHelper = new EffectHelper(GameController, Graphics, Settings);
         _rewardTracker = new RewardTracker(LogFilePath("sanctum-rewards.csv"));
         _probe = new SanctumProbe(LogFilePath("sanctum-probe.txt"));
-        _runTracker = new SanctumRunTracker(
-            LogFilePath("sanctum-runs.csv"),
-            LogFilePath("sanctum-run-rooms.csv"),
-            LogFilePath("sanctum-deals.csv"),
-            LogFilePath("sanctum-run-currency.csv"),
-            LogFilePath("sanctum-run-wide.csv"),
-            LogFilePath("run-state.json"));
+        // The state file sits outside the profile folders: an unfinished run belongs to the
+        // run, not to whichever profile was selected when it started.
+        _runTracker = new SanctumRunTracker(TrackingFilePath, LogFilePath("run-state.json"));
         // Picks a run back up after a HUD restart part way through one
         _runTracker.Load();
         return base.Initialise();
@@ -898,12 +928,12 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
     // in and it prices at one, so any threshold above that would drop it.
     private IReadOnlyList<string> ResolveWideColumns()
     {
-        var tracking = Settings.RunTracking;
+        var tracking = Settings.RunTracking.Profile();
         var ticked = BetterSanctumDevSettings.CurrencyTypes
-            .Where(x => tracking.TrackedCurrencies.GetValueOrDefault(x, false));
+            .Where(x => tracking.Currencies.GetValueOrDefault(x, false));
 
         IEnumerable<string> chosen;
-        if (tracking.OverrideTrackedCurrencies &&
+        if (tracking.Override &&
             tracking.OverrideMode == RunTrackingSettings.OverrideReplace)
         {
             // Replace means the ticked list and nothing else, Chaos Orbs included. Forcing
@@ -916,7 +946,7 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
                 .Where(x => UnitPriceForCurrency(x) >= TrackedCurrencyFloor())
                 .Append("Chaos Orbs");
 
-            if (tracking.OverrideTrackedCurrencies)
+            if (tracking.Override)
             {
                 chosen = chosen.Concat(ticked);
             }
@@ -932,7 +962,7 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
     // keep up with the economy rather than with a number somebody set once.
     private double TrackedCurrencyFloor()
     {
-        var configured = Settings.RunTracking.TrackedCurrencyMinChaos;
+        var configured = Settings.RunTracking.Profile().MinChaos;
         return configured >= 0
             ? configured
             : DivineChaos() * RunTrackingSettings.DefaultTrackedPercentOfDivine / 100.0;

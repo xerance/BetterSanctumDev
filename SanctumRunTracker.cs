@@ -76,29 +76,28 @@ public class SanctumRunTracker
     // the whole haul including the long tail the run summary filters out of sight.
     private const string WideFixedHeader = "when,run,runId,duration,chaos,deals,dealChaos";
 
-    private readonly string _runPath;
-    private readonly string _roomPath;
-    private readonly string _dealPath;
-    private readonly string _currencyPath;
-    private readonly string _widePath;
+    // Resolved on every use rather than held, because the tracking profile decides which
+    // folder these go in and it can be switched between runs. A profile is a set of
+    // columns, and two sets of columns cannot share a file, so each gets its own.
+    private readonly Func<string, string> _trackingFile;
+
+    // Outside the profile folders: an unfinished run belongs to the run, not to whichever
+    // profile happened to be selected when it started.
     private readonly string _statePath;
+
     private DateTime _lastSave = DateTime.MinValue;
 
-    public SanctumRunTracker(
-        string runPath,
-        string roomPath,
-        string dealPath,
-        string currencyPath,
-        string widePath,
-        string statePath)
+    public SanctumRunTracker(Func<string, string> trackingFile, string statePath)
     {
-        _runPath = runPath;
-        _roomPath = roomPath;
-        _dealPath = dealPath;
-        _currencyPath = currencyPath;
-        _widePath = widePath;
+        _trackingFile = trackingFile;
         _statePath = statePath;
     }
+
+    private string RunPath => _trackingFile("sanctum-runs.csv");
+    private string RoomPath => _trackingFile("sanctum-run-rooms.csv");
+    private string DealPath => _trackingFile("sanctum-deals.csv");
+    private string CurrencyPath => _trackingFile("sanctum-run-currency.csv");
+    private string WidePath => _trackingFile("sanctum-run-wide.csv");
 
     public RunState Current { get; private set; }
 
@@ -669,10 +668,10 @@ public class SanctumRunTracker
                 (currency, unit) => unitPrice == null || currency == "Chaos Orbs" || unit >= HaulFloorChaos));
             currencyRows.AddRange(CurrencyRows(run.RunId, "seen", highRewardsSeen, unitPrice, (_, _) => true));
 
-            Append(_runPath, RunHeader, runRows);
-            Append(_roomPath, RoomHeader, roomRows);
-            Append(_dealPath, DealHeader, dealRows);
-            Append(_currencyPath, CurrencyHeader, currencyRows);
+            Append(RunPath, RunHeader, runRows);
+            Append(RoomPath, RoomHeader, roomRows);
+            Append(DealPath, DealHeader, dealRows);
+            Append(CurrencyPath, CurrencyHeader, currencyRows);
             AppendWide(run, wideColumns, runTakes, dealsEntered, dealTakes, unitPrice);
             Current = null;
             TryDelete(_statePath);
@@ -718,10 +717,10 @@ public class SanctumRunTracker
         Func<string, double> unitPrice)
     {
         var columns = ExistingWideColumns() ?? wantedColumns ?? new List<string>();
-        if (!File.Exists(_widePath))
+        if (!File.Exists(WidePath))
         {
             File.AppendAllText(
-                _widePath,
+                WidePath,
                 WideFixedHeader + "," + string.Join(",", columns.Select(Field)) + Environment.NewLine);
         }
 
@@ -736,7 +735,7 @@ public class SanctumRunTracker
 
         var values = new List<object>
         {
-            CountRows(_widePath),
+            CountRows(WidePath),
             run.RunId,
             DescribeDuration(run.Ended - run.Started),
             Math.Round(chaos, 2),
@@ -748,7 +747,7 @@ public class SanctumRunTracker
             (object)quantities.GetValueOrDefault(currency, 0)));
 
         var stamp = DateTime.Now.ToString("s");
-        File.AppendAllLines(_widePath, new[] { $"{stamp},{Row(values.ToArray())}" });
+        File.AppendAllLines(WidePath, new[] { $"{stamp},{Row(values.ToArray())}" });
     }
 
     // The currency columns a wide file was started with, or null if there is no file yet.
@@ -758,12 +757,12 @@ public class SanctumRunTracker
     {
         try
         {
-            if (!File.Exists(_widePath))
+            if (!File.Exists(WidePath))
             {
                 return null;
             }
 
-            var header = File.ReadLines(_widePath).FirstOrDefault();
+            var header = File.ReadLines(WidePath).FirstOrDefault();
             if (string.IsNullOrEmpty(header))
             {
                 return null;

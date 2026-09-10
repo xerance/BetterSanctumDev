@@ -969,7 +969,8 @@ public class RunTrackingSettings
 {
     [JsonIgnore]
     public CustomNode Help { get; set; } = SettingsHelp.Block(
-        "Records one run at a time and writes it to Logs/BetterSanctumDev/ on End Run: sanctum-runs.csv holds a row per run, sanctum-run-rooms.csv a row per room and reward slot, sanctum-deals.csv every offer of every deal entered, sanctum-run-currency.csv the run row again as one row per currency, and sanctum-run-wide.csv a row per run with a column per currency.",
+        "Records one run at a time and writes it on End Run to Logs/BetterSanctumDev/tracking/<tracking list>/: sanctum-runs.csv holds a row per run, sanctum-run-rooms.csv a row per room and reward slot, sanctum-deals.csv every offer of every deal entered, sanctum-run-currency.csv the run row again as one row per currency, and sanctum-run-wide.csv a row per run with a column per currency.",
+        "A tracking list is a set of columns and a folder of its own, so ordinary runs and duplicate runs can be recorded apart rather than averaged together. Switching lists switches which files are written; nothing is deleted by switching, or by deleting the list.",
         "The two spreadsheet files hold the same figures in the two shapes a spreadsheet wants: the currency file is what a pivot table groups, the wide file is what a chart plots. The wide file numbers its own runs, and its chaos column is the whole haul including the long tail the run summary leaves out.",
         "Which currencies get a column follows the price threshold below, so the sheet keeps up with the economy rather than a list written once. Chaos Orbs is always one of them - it is the unit the others are measured in. Tick the columns by hand instead to track something whatever it is worth, or to stop tracking something whatever it is worth.",
         "A wide file keeps the columns it was started with, so changing any of this only takes effect in a new one. Delete the file to pick up a changed set; the quantity columns will not add up to chaos either way, since the tail is what the file leaves out.",
@@ -986,11 +987,6 @@ public class RunTrackingSettings
     // that many chaos, flat.
     public const double DefaultTrackedPercentOfDivine = 1.5;
 
-    public int TrackedCurrencyMinChaos { get; set; } = -1;
-
-    // Ticked by hand as well as by price, or instead of it.
-    public ToggleNode OverrideTrackedCurrencies { get; set; } = new ToggleNode(false);
-
     public const int OverrideInclude = 0;
     public const int OverrideReplace = 1;
 
@@ -1000,14 +996,50 @@ public class RunTrackingSettings
         "Replace - track only what is ticked",
     };
 
-    public int OverrideMode { get; set; } = OverrideInclude;
-
+    // A tracking profile is a set of columns, and two sets of columns cannot share a file,
+    // so each writes into a folder of its own under tracking/. Switching profiles switches
+    // which set of files is being written, which is what makes separate records of, say,
+    // ordinary runs and duplicate runs possible.
     [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
-    public Dictionary<string, bool> TrackedCurrencies { get; set; } = new Dictionary<string, bool>();
+    public Dictionary<string, TrackingProfile> Profiles { get; set; } =
+        new Dictionary<string, TrackingProfile> { ["Default"] = new TrackingProfile() };
+
+    public string CurrentProfile { get; set; } = "Default";
 
     // Set by the plugin so the threshold hint can say what the share comes to in chaos
     [JsonIgnore]
     public Func<double> TrackedFloorProvider { get; set; }
+
+    // Set by the plugin, which knows where the files go
+    [JsonIgnore]
+    public Action OpenTrackingFolder { get; set; }
+
+    public TrackingProfile Profile()
+    {
+        var name = CurrentProfile != null && Profiles.ContainsKey(CurrentProfile)
+            ? CurrentProfile
+            : Profiles.Keys.FirstOrDefault() ?? "Default";
+
+        if (!Profiles.ContainsKey(name))
+        {
+            Profiles[name] = new TrackingProfile();
+        }
+
+        CurrentProfile ??= name;
+        return Profiles[name];
+    }
+
+    // A folder name, so it has to survive being one. Anything Windows will not take in a
+    // path becomes an underscore rather than an error nobody would connect to the name.
+    public string ProfileFolder()
+    {
+        var name = CurrentProfile != null && Profiles.ContainsKey(CurrentProfile)
+            ? CurrentProfile
+            : "Default";
+
+        var safe = new string(name.Select(c => char.IsLetterOrDigit(c) || c is ' ' or '-' or '_' ? c : '_').ToArray()).Trim();
+        return safe.Length > 0 ? safe : "Default";
+    }
 
     [JsonIgnore]
     public CustomNode TrackedCurrencyNode { get; set; }
@@ -1015,14 +1047,86 @@ public class RunTrackingSettings
     public RunTrackingSettings()
     {
         var filter = "";
+        var renameBuffer = "";
+        string renameBufferOwner = null;
         TrackedCurrencyNode = new CustomNode
         {
             DrawDelegate = () =>
             {
-                var threshold = TrackedCurrencyMinChaos;
+                var profile = Profile();
+
+                if (ImGui.Button("Open tracking folder##openTracking"))
+                {
+                    OpenTrackingFolder?.Invoke();
+                }
+
+                SettingsHelp.Hint("Opens the folder this profile writes into. Each profile has one of its own, since a profile is a set of columns and two sets cannot share a file.");
+
+                foreach (var key in Profiles.Keys.OrderBy(x => x).ToList())
+                {
+                    if (key == CurrentProfile)
+                    {
+                        ImGui.PushStyleColor(ImGuiCol.Button, Color.DarkGreen.ToImgui());
+                    }
+
+                    if (ImGui.Button($"{key}##selectTracking{key}") && key != CurrentProfile)
+                    {
+                        CurrentProfile = key;
+                    }
+
+                    if (key == CurrentProfile)
+                    {
+                        ImGui.PopStyleColor();
+                    }
+
+                    ImGui.SameLine();
+                }
+
+                ImGui.NewLine();
+
+                // The buffer survives across frames and is written back on Enter only.
+                // Committing every keystroke renames the profile out from under the widget.
+                if (renameBufferOwner != CurrentProfile)
+                {
+                    renameBufferOwner = CurrentProfile;
+                    renameBuffer = CurrentProfile ?? "";
+                }
+
+                if (ImGui.InputText("Name##renameTracking", ref renameBuffer, 64, ImGuiInputTextFlags.EnterReturnsTrue))
+                {
+                    RenameProfile(CurrentProfile, renameBuffer);
+                }
+
+                SettingsHelp.Hint("Press Enter to rename. The folder the profile writes into is named after it, so renaming starts a new one - the old folder keeps the runs already in it.");
+
+                if (ImGui.Button("Add tracking list##addTracking"))
+                {
+                    var name = Enumerable.Range(0, 100)
+                        .Select(x => $"Tracking list {x}")
+                        .First(x => !Profiles.ContainsKey(x));
+                    Profiles[name] = new TrackingProfile();
+                    CurrentProfile = name;
+                }
+
+                // Deleting the last one would leave nothing to fall back to
+                if (Profiles.Count > 1)
+                {
+                    ImGui.SameLine();
+                    if (ImGui.Button($"Delete {CurrentProfile}##deleteTracking"))
+                    {
+                        Profiles.Remove(CurrentProfile);
+                        CurrentProfile = Profiles.Keys.First();
+                    }
+                }
+
+                SettingsHelp.Hint("Deleting a list does not delete what it recorded. Its folder stays where it is.");
+
+                ImGui.Separator();
+
+                var threshold = profile.MinChaos;
                 if (ImGui.InputInt("Track currencies worth at least (chaos) override", ref threshold))
                 {
-                    TrackedCurrencyMinChaos = threshold < 0 ? -1 : threshold;
+                    profile.MinChaos = threshold < 0 ? -1 : threshold;
                 }
 
                 var floor = TrackedFloorProvider?.Invoke() ?? 0;
@@ -1035,15 +1139,21 @@ public class RunTrackingSettings
                      "\n\nChaos Orbs always has a column whatever the threshold, being the unit the rest are counted in." +
                      "\n\nA wide file keeps the columns it was started with, so a change here only takes effect in a new one.");
 
-                if (!OverrideTrackedCurrencies)
+                var over = profile.Override;
+                if (ImGui.Checkbox("Override tracked currencies", ref over))
+                {
+                    profile.Override = over;
+                }
+
+                if (!profile.Override)
                 {
                     return;
                 }
 
-                var mode = OverrideMode;
+                var mode = profile.OverrideMode;
                 if (ImGui.Combo("Ticked currencies", ref mode, OverrideModeNames, OverrideModeNames.Length))
                 {
-                    OverrideMode = mode;
+                    profile.OverrideMode = mode;
                 }
 
                 SettingsHelp.Hint("Include keeps the threshold and adds what is ticked, for something worth following whatever it prices at." +
@@ -1058,15 +1168,42 @@ public class RunTrackingSettings
                         continue;
                     }
 
-                    var tracked = TrackedCurrencies.GetValueOrDefault(type, false);
+                    var tracked = profile.Currencies.GetValueOrDefault(type, false);
                     if (ImGui.Checkbox(type, ref tracked))
                     {
-                        TrackedCurrencies[type] = tracked;
+                        profile.Currencies[type] = tracked;
                     }
                 }
             }
         };
     }
+
+    private void RenameProfile(string oldName, string newName)
+    {
+        newName = newName?.Trim();
+        if (string.IsNullOrEmpty(oldName) || string.IsNullOrEmpty(newName) ||
+            newName == oldName || Profiles.ContainsKey(newName) ||
+            !Profiles.Remove(oldName, out var content))
+        {
+            return;
+        }
+
+        Profiles[newName] = content;
+        CurrentProfile = newName;
+    }
+}
+
+public class TrackingProfile
+{
+    // -1 follows the divine price; anything else is that many chaos, flat
+    public int MinChaos { get; set; } = -1;
+
+    public bool Override { get; set; }
+
+    public int OverrideMode { get; set; } = RunTrackingSettings.OverrideInclude;
+
+    [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
+    public Dictionary<string, bool> Currencies { get; set; } = new Dictionary<string, bool>();
 }
 
 [Submenu(CollapsedByDefault = true)]
