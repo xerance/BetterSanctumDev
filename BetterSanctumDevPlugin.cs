@@ -95,19 +95,12 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
     // there is nothing in a workbook to join to.
     private void ExportTrackingWorkbook()
     {
-        // Every currency, not only the tracked ones: the sheet is a price list, and one
-        // that only held what happens to be tracked today could not total a file written
-        // when something else was.
-        var prices = BetterSanctumDevSettings.CurrencyTypes
-            .Select(x => (Currency: x, Chaos: Math.Round(UnitPriceForCurrency(x), 2)))
-            .ToList();
-
         var written = SanctumWorkbook.Write(
             TrackingFilePath("sanctum-run-wide.csv"),
             TrackingFilePath("sanctum-run-wide.xlsx"),
             new HashSet<string> { "runId" },
             GameController?.IngameState?.ServerData?.League,
-            prices,
+            CurrentPrices(),
             out var error);
 
         if (written < 0)
@@ -125,6 +118,38 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
 
         LogMessage($"[BetterSanctumDev] exported {written} rows to sanctum-run-wide.xlsx", 30);
     }
+
+    // The same workbook with no runs in it, for recording by hand. The columns are the ones
+    // this profile tracks and the prices are today's, so a quantity typed into it prices
+    // itself without the HUD ever having written a row.
+    private void ExportTrackingTemplate()
+    {
+        var written = SanctumWorkbook.WriteTemplate(
+            TrackingFilePath("sanctum-run-template.xlsx"),
+            ResolveWideColumns(),
+            TemplateRuns,
+            GameController?.IngameState?.ServerData?.League,
+            CurrentPrices(),
+            out var error);
+
+        if (written < 0)
+        {
+            LogError($"[BetterSanctumDev] could not write the template: {error}", 30);
+            return;
+        }
+
+        LogMessage($"[BetterSanctumDev] wrote a blank template for {TemplateRuns} runs to sanctum-run-template.xlsx", 30);
+    }
+
+    private const int TemplateRuns = 20;
+
+    // Every currency, not only the tracked ones: the sheet is a price list, and one that
+    // only held what happens to be tracked today could not total a file written when
+    // something else was.
+    private List<(string Currency, double Chaos)> CurrentPrices() =>
+        BetterSanctumDevSettings.CurrencyTypes
+            .Select(x => (Currency: x, Chaos: Math.Round(UnitPriceForCurrency(x), 2)))
+            .ToList();
 
     private void OpenTrackingFolder()
     {
@@ -148,6 +173,7 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
         Settings.RunTracking.TrackedFloorProvider = TrackedCurrencyFloor;
         Settings.RunTracking.OpenTrackingFolder = OpenTrackingFolder;
         Settings.RunTracking.ExportWorkbook = ExportTrackingWorkbook;
+        Settings.RunTracking.ExportTemplate = ExportTrackingTemplate;
         _effectHelper = new EffectHelper(GameController, Graphics, Settings);
         _rewardTracker = new RewardTracker(LogFilePath("sanctum-rewards.csv"));
         _probe = new SanctumProbe(LogFilePath("sanctum-probe.txt"));

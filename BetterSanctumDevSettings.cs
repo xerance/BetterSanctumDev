@@ -1018,6 +1018,9 @@ public class RunTrackingSettings
     [JsonIgnore]
     public Action ExportWorkbook { get; set; }
 
+    [JsonIgnore]
+    public Action ExportTemplate { get; set; }
+
     public TrackingProfile Profile()
     {
         var name = CurrentProfile != null && Profiles.ContainsKey(CurrentProfile)
@@ -1073,7 +1076,17 @@ public class RunTrackingSettings
                 }
 
                 SettingsHelp.Hint("Rebuilds sanctum-run-wide.xlsx from the wide CSV: header frozen, columns sized, numbers written as numbers. Without runId, which is in the CSV so the other files can join on it and has nothing to join to here." +
+                     "\n\nTwo sheets. Runs holds a row per run and per deal, with the totals as formulas against Prices - so correcting a price there re-totals every run in the file. Prices lists every currency, not only the tracked ones, since a workbook may be totalling a file written when a different set was tracked." +
                      "\n\nThe CSV stays the record. It is appended a line at a time, where a workbook is rewritten whole - so this is generated on demand and can be deleted and rebuilt whenever.");
+
+                ImGui.SameLine();
+                if (ImGui.Button("Blank template##templateTracking"))
+                {
+                    ExportTemplate?.Invoke();
+                }
+
+                SettingsHelp.Hint("Writes sanctum-run-template.xlsx: the same workbook with no runs in it, twenty pairs of empty rows to fill in by hand." +
+                     "\n\nThe totals are the same formulas, so a quantity typed into a currency column prices itself. For recording runs without the HUD having written them - the columns are the ones this list tracks and the prices are today's.");
 
                 foreach (var key in Profiles.Keys.OrderBy(x => x).ToList())
                 {

@@ -98,6 +98,65 @@ public static class SanctumWorkbook
                 .Select(x => x.index)
                 .ToList();
 
+            return Emit(rows, keep, xlsxPath, league, prices, ref error);
+        }
+        catch (Exception e)
+        {
+            error = e.Message;
+            return -1;
+        }
+    }
+
+    // The same workbook with nothing in it: headings, the price sheet, and a pair of rows
+    // per run with only the run number and whether it is the run or its deals filled in.
+    //
+    // For recording runs by hand. The totals are the same formulas, so a quantity typed
+    // into a currency column prices itself - which is most of what the workbook is for, and
+    // none of it needs the HUD to have written the row.
+    public static int WriteTemplate(
+        string xlsxPath,
+        IReadOnlyList<string> currencies,
+        int runs,
+        string league,
+        IReadOnlyList<(string Currency, double Chaos)> prices,
+        out string error)
+    {
+        error = null;
+        try
+        {
+            var headers = new List<string> { "date", "run", "source", "duration" };
+            headers.AddRange(currencies.Select(CurrencyNames.ToShort));
+
+            var rows = new List<List<string>> { headers };
+            for (var run = 0; run < Math.Max(runs, 1); run++)
+            {
+                foreach (var source in new[] { "run", "deal" })
+                {
+                    var row = new List<string> { "", run.ToString(CultureInfo.InvariantCulture), source, "" };
+                    row.AddRange(currencies.Select(_ => ""));
+                    rows.Add(row);
+                }
+            }
+
+            var keep = Enumerable.Range(0, headers.Count).ToList();
+            return Emit(rows, keep, xlsxPath, league, prices, ref error);
+        }
+        catch (Exception e)
+        {
+            error = e.Message;
+            return -1;
+        }
+    }
+
+    private static int Emit(
+        List<List<string>> rows,
+        List<int> keep,
+        string xlsxPath,
+        string league,
+        IReadOnlyList<(string Currency, double Chaos)> prices,
+        ref string error)
+    {
+        {
             prices ??= new List<(string, double)>();
             var runs = BuildRuns(rows, keep, league);
             var priceSheet = BuildPrices(prices);
@@ -144,11 +203,6 @@ public static class SanctumWorkbook
 
             File.Move(temp, xlsxPath, overwrite: true);
             return rows.Count - 1;
-        }
-        catch (Exception e)
-        {
-            error = e.Message;
-            return -1;
         }
     }
 
