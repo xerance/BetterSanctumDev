@@ -50,6 +50,8 @@ public static class SanctumWorkbook
     private const int StylePrice = 7;
     private const int StyleTotalRunDivine = 8;
     private const int StyleTotalDealDivine = 9;
+    private const int StyleFooter = 10;
+    private const int StyleFooterValue = 11;
 
     // The heading Divine Orbs is written under, which is what the divine total divides by.
     private static readonly string DivineColumn = CurrencyNames.ToShort("Divine Orbs");
@@ -344,7 +346,79 @@ public static class SanctumWorkbook
             xml.Append("</row>");
         }
 
+        xml.Append(Footer(rows.Count, headers, currencyIndexes, totalColumn, runColumn, sourceColumn));
         xml.Append("</sheetData></worksheet>");
+        return xml.ToString();
+    }
+
+    // Everything above added up, under the last run.
+    //
+    // Run rows only, through SUMIF on the source column. A deal is a room the run already
+    // counted, so its row repeats currency the run row holds - summing the column outright
+    // would count every deal twice and quietly inflate the lot.
+    private static string Footer(
+        int dataRows,
+        List<string> headers,
+        List<int> currencyIndexes,
+        int totalColumn,
+        int runColumn,
+        int sourceColumn)
+    {
+        if (dataRows < 2 || sourceColumn < 0)
+        {
+            return "";
+        }
+
+        var line = dataRows + 1;
+        var first = 2;
+        var last = dataRows;
+        var source = ColumnName(sourceColumn + FirstDataColumn);
+        var sourceRange = $"${source}${first}:${source}${last}";
+
+        var xml = new StringBuilder();
+        xml.Append($"<row r=\"{line}\">");
+        xml.Append(TextCell($"A{line}", "TOTAL", StyleFooter));
+
+        for (var column = 0; column < headers.Count; column++)
+        {
+            var reference = ColumnName(column + FirstDataColumn) + line;
+
+            if (column == runColumn)
+            {
+                // How many runs are above, rather than the last run's number: a file whose
+                // rows have been sorted or pruned still counts what is in it.
+                xml.Append($"<c r=\"{reference}\" s=\"{StyleFooter}\"><f>COUNTIF({sourceRange},&quot;run&quot;)</f></c>");
+                continue;
+            }
+
+            if (currencyIndexes.Contains(column))
+            {
+                var currency = ColumnName(column + FirstDataColumn);
+                xml.Append($"<c r=\"{reference}\" s=\"{StyleFooter}\">" +
+                           $"<f>SUMIF({sourceRange},&quot;run&quot;,${currency}${first}:${currency}${last})</f></c>");
+                continue;
+            }
+
+            if (column == sourceColumn)
+            {
+                xml.Append(TextCell(reference, "total runs", StyleFooter));
+                continue;
+            }
+
+            xml.Append($"<c r=\"{reference}\" s=\"{StyleFooter}\"/>");
+        }
+
+        // The footer's own totals, from the summed quantities beside them rather than by
+        // adding the rows' totals up - one sum, not a sum of roundings.
+        if (currencyIndexes.Count > 0)
+        {
+            var chaos = ColumnName(totalColumn) + line;
+            xml.Append($"<c r=\"{chaos}\" s=\"{StyleFooterValue}\"><f>{TotalFormula(currencyIndexes, dataRows)}</f></c>");
+            xml.Append($"<c r=\"{ColumnName(totalColumn + 1)}{line}\" s=\"{StyleFooterValue}\">" +
+                       $"<f>IFERROR({chaos}/SUMIF(Prices!$B:$B,&quot;{DivineColumn}&quot;,Prices!$C:$C),&quot;&quot;)</f></c>");
+        }
+
+        xml.Append("</row>");
         return xml.ToString();
     }
 
@@ -524,7 +598,7 @@ public static class SanctumWorkbook
         "<font><sz val=\"11\"/><name val=\"Calibri\"/></font>" +
         "<font><b/><sz val=\"11\"/><name val=\"Calibri\"/></font>" +
         "</fonts>" +
-        "<fills count=\"7\">" +
+        "<fills count=\"8\">" +
         "<fill><patternFill patternType=\"none\"/></fill>" +
         "<fill><patternFill patternType=\"gray125\"/></fill>" +
         "<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFDCE6F1\"/><bgColor indexed=\"64\"/></patternFill></fill>" +
@@ -532,10 +606,11 @@ public static class SanctumWorkbook
         "<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFFCE4D6\"/><bgColor indexed=\"64\"/></patternFill></fill>" +
         "<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFC6E0B4\"/><bgColor indexed=\"64\"/></patternFill></fill>" +
         "<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFF8CBAD\"/><bgColor indexed=\"64\"/></patternFill></fill>" +
+        "<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFD9D9D9\"/><bgColor indexed=\"64\"/></patternFill></fill>" +
         "</fills>" +
         "<borders count=\"1\"><border/></borders>" +
         "<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>" +
-        "<cellXfs count=\"10\">" +
+        "<cellXfs count=\"12\">" +
         "<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/>" +
         "<xf numFmtId=\"0\" fontId=\"1\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyFont=\"1\"/>" +
         "<xf numFmtId=\"164\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>" +
@@ -546,6 +621,8 @@ public static class SanctumWorkbook
         "<xf numFmtId=\"2\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>" +
         "<xf numFmtId=\"2\" fontId=\"0\" fillId=\"5\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\" applyFill=\"1\"/>" +
         "<xf numFmtId=\"2\" fontId=\"0\" fillId=\"6\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\" applyFill=\"1\"/>" +
+        "<xf numFmtId=\"0\" fontId=\"1\" fillId=\"7\" borderId=\"0\" xfId=\"0\" applyFont=\"1\" applyFill=\"1\"/>" +
+        "<xf numFmtId=\"2\" fontId=\"1\" fillId=\"7\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\" applyFont=\"1\" applyFill=\"1\"/>" +
         "</cellXfs>" +
         "</styleSheet>";
 }
