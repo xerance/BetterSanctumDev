@@ -952,9 +952,11 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
             }
         }
 
+        // Sorted by the heading rather than by the name behind it, since the heading is
+        // what somebody scans along the top of the sheet looking for a column.
         return chosen
             .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(CurrencyNames.ToShort, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 

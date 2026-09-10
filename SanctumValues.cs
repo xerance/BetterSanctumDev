@@ -1,6 +1,68 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace BetterSanctumDev;
+
+// What a currency is called in a spreadsheet column. The game's own names are what the
+// reward table reports and what an override is keyed on, so those stay the keys; these are
+// for headings only, where "Orbs of Annulment" costs more width than it earns.
+//
+// Anything without an entry keeps its full name, so a currency added later reads plainly
+// rather than breaking.
+public static class CurrencyNames
+{
+    private static readonly IReadOnlyDictionary<string, string> Short = new Dictionary<string, string>
+    {
+        ["Mirrors of Kalandra"] = "mirror",
+        ["Volatile Vaal Orbs"] = "volatile vaal",
+        ["Fracturing Orbs"] = "fracturing",
+        ["Divine Orbs"] = "divine",
+        ["Veiled Chaos Orbs"] = "veiled chaos",
+        ["Sacred Orbs"] = "sacred",
+        ["Orbs of Annulment"] = "annul",
+        ["Ancient Orbs"] = "ancient",
+        ["Divine Vessels"] = "vessel",
+        ["Chaos Orbs"] = "chaos",
+        ["Chromatic Orbs"] = "chrome",
+        ["Gemcutter's Prisms"] = "gcp",
+        ["Orbs of Alteration"] = "alt",
+        ["Orbs of Chance"] = "chance",
+        ["Glassblower's Baubles"] = "bauble",
+        ["Jeweller's Orbs"] = "jew",
+        ["Orbs of Alchemy"] = "alch",
+        ["Orbs of Fusing"] = "fuse",
+        ["Orbs of Scouring"] = "scour",
+        ["Cartographer's Chisels"] = "chisel",
+        ["Orbs of Binding"] = "binding",
+        ["Orbs of Regret"] = "regret",
+        ["Blessed Orbs"] = "blessed",
+        ["Vaal Orbs"] = "vaal",
+        ["Orbs of Horizon"] = "horizon",
+        ["Instilling Orbs"] = "instilling",
+        ["Regal Orbs"] = "regal",
+        ["Enkindling Orbs"] = "enkindling",
+        ["Orbs of Unmaking"] = "unmaking",
+        ["Awakened Sextants"] = "sextant",
+        ["Stacked Decks"] = "deck",
+        ["Exalted Orbs"] = "exalted",
+        ["Blacksmith's Whetstones"] = "whetstone",
+        ["Armourer's Scraps"] = "scrap",
+        ["Orbs of Transmutation"] = "transmute",
+        ["Orbs of Augmentation"] = "aug",
+    };
+
+    // Both directions, because a file written before this existed has the full names in
+    // its header, and the header is what says which columns a file has.
+    private static readonly IReadOnlyDictionary<string, string> Full =
+        Short.ToDictionary(x => x.Value, x => x.Key, StringComparer.OrdinalIgnoreCase);
+
+    public static string ToShort(string currency) =>
+        currency != null && Short.TryGetValue(currency, out var name) ? name : currency;
+
+    public static string ToFull(string column) =>
+        column != null && Full.TryGetValue(column, out var name) ? name : column;
+}
 
 // Everything a route is scored on is chaos. Rewards are priced directly; rooms and
 // afflictions are priced from an anchor expressed as a percentage of a divine, so the

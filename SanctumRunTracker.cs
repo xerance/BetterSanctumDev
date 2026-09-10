@@ -74,7 +74,16 @@ public class SanctumRunTracker
     //
     // run counts rows already in the file, so it is a stable x axis across runs. chaos is
     // the whole haul including the long tail the run summary filters out of sight.
-    private const string WideFixedHeader = "when,run,runId,duration,chaos,deals,dealChaos";
+    // Two rows a run: what the run paid, then what the deals in it paid, in the same
+    // columns. A deal is a room, so the deal row is part of the run row rather than an
+    // addition to it - filter on source rather than summing both.
+    //
+    // A date and no clock: two runs are never told apart by the second they ended, and a
+    // full timestamp is a column you have to reformat before a spreadsheet will group it.
+    // runId is last, out of the way of everything worth reading, because it is the key the
+    // other three files join on and dropping it would strand them.
+    private const string WideFixedHeader = "date,run,source,duration,chaos,deals";
+    private const string WideTrailingHeader = "runId";
 
     // Resolved on every use rather than held, because the tracking profile decides which
     // folder these go in and it can be switched between runs. A profile is a set of
@@ -731,9 +740,40 @@ public class SanctumRunTracker
         {
             File.AppendAllText(
                 WidePath,
-                WideFixedHeader + "," + string.Join(",", columns.Select(Field)) + Environment.NewLine);
+                WideFixedHeader + "," +
+                string.Join(",", columns.Select(x => Field(CurrencyNames.ToShort(x)))) + "," +
+                WideTrailingHeader + Environment.NewLine);
         }
 
+        // The run's own number, shared by both of its rows so they group together
+        var index = Math.Max(CountRows(WidePath), 0) / 2;
+        var date = DateTime.Now.ToString("yyyy-MM-dd");
+
+        var rows = new List<string>
+        {
+            WideRow(columns, date, index, "run", DescribeDuration(run.Ended - run.Started),
+                null, takes, unitPrice, run.RunId),
+            WideRow(columns, date, index, "deal", null,
+                dealsEntered, dealTakes, unitPrice, run.RunId),
+        };
+
+        File.AppendAllLines(WidePath, rows);
+    }
+
+    // One row, for one source. Quantities land in the same columns whichever source it is,
+    // which is the point: the deal row says how much of each currency came out of deals
+    // without a second set of columns to read it in.
+    private static string WideRow(
+        IReadOnlyList<string> columns,
+        string date,
+        int index,
+        string source,
+        string duration,
+        int? deals,
+        List<SlotObservation> takes,
+        Func<string, double> unitPrice,
+        string runId)
+    {
         var quantities = takes
             .Where(x => x != null && !string.IsNullOrEmpty(x.Currency))
             .GroupBy(x => x.Currency)
@@ -745,19 +785,20 @@ public class SanctumRunTracker
 
         var values = new List<object>
         {
-            CountRows(WidePath),
-            run.RunId,
-            DescribeDuration(run.Ended - run.Started),
+            index,
+            source,
+            duration,
             Math.Round(chaos, 2),
-            dealsEntered,
-            Math.Round(dealTakes.Sum(x => SlotValue(x, unitPrice)), 2),
+            deals,
         };
 
-        values.AddRange(columns.Select(currency =>
-            (object)quantities.GetValueOrDefault(currency, 0)));
+        // A column written short still holds a currency's full name underneath, and a file
+        // started before the short names existed holds the full one - ToFull takes either.
+        values.AddRange(columns.Select(column =>
+            (object)quantities.GetValueOrDefault(CurrencyNames.ToFull(column), 0)));
 
-        var stamp = DateTime.Now.ToString("s");
-        File.AppendAllLines(WidePath, new[] { $"{stamp},{Row(values.ToArray())}" });
+        values.Add(runId);
+        return $"{date},{Row(values.ToArray())}";
     }
 
     // The currency columns a wide file was started with, or null if there is no file yet.
@@ -778,11 +819,21 @@ public class SanctumRunTracker
                 return null;
             }
 
-            return header
+            // The currency columns are what sits between the fixed prefix and the runId
+            // that trails them. An older file has no trailing column, so dropping it is
+            // conditional rather than assumed.
+            var columns = header
                 .Split(',')
                 .Skip(WideFixedHeader.Split(',').Length)
                 .Where(x => x.Length > 0)
                 .ToList();
+
+            if (columns.Count > 0 && columns[^1] == WideTrailingHeader)
+            {
+                columns.RemoveAt(columns.Count - 1);
+            }
+
+            return columns;
         }
         catch (Exception)
         {
