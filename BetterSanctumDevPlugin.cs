@@ -104,20 +104,6 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
             _runTracker.NoteHubVisit();
         }
 
-        // Taken from the first floor entered rather than the hub, whose level says nothing
-        // about the run. Only once, so a later floor cannot rewrite it.
-        //
-        // RealLevel and not Area.AreaLevel: the second is the world area table's own
-        // figure, which for a Sanctum floor is 1 whatever you actually walked into. Only
-        // the instance knows what it was rolled at.
-        if (_runTracker.Current is { AreaLevel: 0 } run &&
-            area?.Area?.Id is { } areaId &&
-            areaId.StartsWith("Sanctum") &&
-            !IsForbiddenSanctumHub(areaId))
-        {
-            run.AreaLevel = area.RealLevel;
-        }
-
         base.AreaChange(area);
     }
 

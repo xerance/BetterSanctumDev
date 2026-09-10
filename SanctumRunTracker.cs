@@ -111,7 +111,7 @@ public class SanctumRunTracker
     // here so the share of a run that came out of deals can be read off without going to
     // the deal file for it.
     private string WideHeader =>
-        "when,run,runId,areaLevel,duration,chaos,deals,dealChaos," +
+        "when,run,runId,duration,chaos,deals,dealChaos," +
         string.Join(",", _currencyColumns.Select(Field)) + ",other";
 
     public RunState Current { get; private set; }
@@ -731,7 +731,6 @@ public class SanctumRunTracker
         {
             CountRows(_widePath),
             run.RunId,
-            run.AreaLevel > 0 ? run.AreaLevel : (object)null,
             DescribeDuration(run.Ended - run.Started),
             Math.Round(chaos, 2),
             dealsEntered,
