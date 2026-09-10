@@ -82,7 +82,11 @@ public class SanctumRunTracker
     // full timestamp is a column you have to reformat before a spreadsheet will group it.
     // runId is last, out of the way of everything worth reading, because it is the key the
     // other three files join on and dropping it would strand them.
-    private const string WideFixedHeader = "date,run,source,duration,chaos,deals";
+    // chaosValue rather than chaos: the currency columns are counts, and one of them is
+    // Chaos Orbs, headed "chaos". Two columns of that name in one sheet is a duplicate
+    // heading a pivot table cannot tell apart, and reads as a count of chaos orbs when it
+    // is what the whole haul came to.
+    private const string WideFixedHeader = "date,run,source,duration,chaosValue,deals";
     private const string WideTrailingHeader = "runId";
 
     // Resolved on every use rather than held, because the tracking profile decides which
@@ -749,11 +753,13 @@ public class SanctumRunTracker
         var index = Math.Max(CountRows(WidePath), 0) / 2;
         var date = DateTime.Now.ToString("yyyy-MM-dd");
 
+        // The deal row carries no date. It is the same run on the same day, and repeating
+        // it reads as a second run at a glance. The run number ties the two together.
         var rows = new List<string>
         {
             WideRow(columns, date, index, "run", DescribeDuration(run.Ended - run.Started),
                 null, takes, unitPrice, run.RunId),
-            WideRow(columns, date, index, "deal", null,
+            WideRow(columns, null, index, "deal", null,
                 dealsEntered, dealTakes, unitPrice, run.RunId),
         };
 

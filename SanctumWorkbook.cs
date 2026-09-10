@@ -108,19 +108,37 @@ public static class SanctumWorkbook
 
         xml.Append("</cols><sheetData>");
 
+        // Banded by run rather than by row, so a run's rows share a colour however many it
+        // wrote - and a run that ever writes one row instead of two cannot shift the
+        // banding of every run after it, which counting rows would.
+        var runColumn = rows[0].IndexOf("run");
+
         for (var row = 0; row < rows.Count; row++)
         {
+            var tinted = row > 0 &&
+                         runColumn >= 0 &&
+                         runColumn < rows[row].Count &&
+                         int.TryParse(rows[row][runColumn], out var runNumber) &&
+                         runNumber % 2 == 0;
+
             xml.Append($"<row r=\"{row + 1}\">");
             for (var column = 0; column < keep.Count; column++)
             {
                 var index = keep[column];
                 var value = index < rows[row].Count ? rows[row][index] : "";
+                var reference = ColumnName(column) + (row + 1);
+
+                // An empty cell in a tinted row is still written, or the band breaks into
+                // stripes wherever a run happened not to pay something.
                 if (value.Length == 0)
                 {
+                    if (tinted)
+                    {
+                        xml.Append($"<c r=\"{reference}\" s=\"3\"/>");
+                    }
+
                     continue;
                 }
-
-                var reference = ColumnName(column) + (row + 1);
 
                 // A date written as a date rather than as the text of one, so a chart can
                 // put runs on a time axis instead of treating each day as its own category.
@@ -129,7 +147,7 @@ public static class SanctumWorkbook
                         System.Globalization.DateTimeStyles.None, out var date))
                 {
                     var serial = (date.Date - ExcelEpoch).TotalDays;
-                    xml.Append($"<c r=\"{reference}\" s=\"2\"><v>{serial.ToString(System.Globalization.CultureInfo.InvariantCulture)}</v></c>");
+                    xml.Append($"<c r=\"{reference}\" s=\"{(tinted ? 4 : 2)}\"><v>{serial.ToString(System.Globalization.CultureInfo.InvariantCulture)}</v></c>");
                 }
 
                 // A number written as a number, so the sheet can sum and chart it without
@@ -137,11 +155,12 @@ public static class SanctumWorkbook
                 else if (row > 0 && double.TryParse(value, System.Globalization.NumberStyles.Float,
                         System.Globalization.CultureInfo.InvariantCulture, out var number))
                 {
-                    xml.Append($"<c r=\"{reference}\"><v>{number.ToString(System.Globalization.CultureInfo.InvariantCulture)}</v></c>");
+                    var style = tinted ? " s=\"3\"" : "";
+                    xml.Append($"<c r=\"{reference}\"{style}><v>{number.ToString(System.Globalization.CultureInfo.InvariantCulture)}</v></c>");
                 }
                 else
                 {
-                    var style = row == 0 ? " s=\"1\"" : "";
+                    var style = row == 0 ? " s=\"1\"" : tinted ? " s=\"3\"" : "";
                     xml.Append($"<c r=\"{reference}\"{style} t=\"inlineStr\"><is><t>{Escape(value)}</t></is></c>");
                 }
             }
@@ -261,16 +280,19 @@ public static class SanctumWorkbook
         "<font><sz val=\"11\"/><name val=\"Calibri\"/></font>" +
         "<font><b/><sz val=\"11\"/><name val=\"Calibri\"/></font>" +
         "</fonts>" +
-        "<fills count=\"2\">" +
+        "<fills count=\"3\">" +
         "<fill><patternFill patternType=\"none\"/></fill>" +
         "<fill><patternFill patternType=\"gray125\"/></fill>" +
+        "<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFDCE6F1\"/><bgColor indexed=\"64\"/></patternFill></fill>" +
         "</fills>" +
         "<borders count=\"1\"><border/></borders>" +
         "<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>" +
-        "<cellXfs count=\"3\">" +
+        "<cellXfs count=\"5\">" +
         "<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/>" +
         "<xf numFmtId=\"0\" fontId=\"1\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyFont=\"1\"/>" +
         "<xf numFmtId=\"164\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>" +
+        "<xf numFmtId=\"0\" fontId=\"0\" fillId=\"2\" borderId=\"0\" xfId=\"0\" applyFill=\"1\"/>" +
+        "<xf numFmtId=\"164\" fontId=\"0\" fillId=\"2\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\" applyFill=\"1\"/>" +
         "</cellXfs>" +
         "</styleSheet>";
 }
