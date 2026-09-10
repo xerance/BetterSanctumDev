@@ -181,9 +181,13 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
         _effectHelper = new EffectHelper(GameController, Graphics, Settings);
         _rewardTracker = new RewardTracker(LogFilePath("sanctum-rewards.csv"));
         _probe = new SanctumProbe(LogFilePath("sanctum-probe.txt"));
-        // The state file sits outside the profile folders: an unfinished run belongs to the
-        // run, not to whichever profile was selected when it started.
-        _runTracker = new SanctumRunTracker(TrackingFilePath, LogFilePath("run-state.json"));
+        // Two of these sit outside the profile folders: the deal file, which is one dataset
+        // however many lists are writing to it, and the state file, which belongs to the
+        // run rather than to whichever list was selected when it started.
+        _runTracker = new SanctumRunTracker(
+            TrackingFilePath,
+            LogFilePath("sanctum-deals.csv"),
+            LogFilePath("run-state.json"));
         // Picks a run back up after a HUD restart part way through one
         _runTracker.Load();
         return base.Initialise();

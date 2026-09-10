@@ -96,21 +96,30 @@ public class SanctumRunTracker
     // columns, and two sets of columns cannot share a file, so each gets its own.
     private readonly Func<string, string> _trackingFile;
 
-    // Outside the profile folders: an unfinished run belongs to the run, not to whichever
-    // profile happened to be selected when it started.
+    // Outside the profile folders, both of them, and for different reasons.
+    //
+    // An unfinished run belongs to the run rather than to whichever profile was selected
+    // when it started.
+    //
+    // The deal file is one dataset rather than one per list. Its columns are fixed, so
+    // nothing in it depends on which currencies a list tracks, and the question it exists
+    // to answer - what is a deal actually worth - is answered by volume. Splitting it per
+    // list would divide the only file here that needs all the rows it can get.
+    private readonly string _dealPath;
     private readonly string _statePath;
 
     private DateTime _lastSave = DateTime.MinValue;
 
-    public SanctumRunTracker(Func<string, string> trackingFile, string statePath)
+    public SanctumRunTracker(Func<string, string> trackingFile, string dealPath, string statePath)
     {
         _trackingFile = trackingFile;
+        _dealPath = dealPath;
         _statePath = statePath;
     }
 
     private string RunPath => _trackingFile("sanctum-runs.csv");
     private string RoomPath => _trackingFile("sanctum-run-rooms.csv");
-    private string DealPath => _trackingFile("sanctum-deals.csv");
+    private string DealPath => _dealPath;
     private string CurrencyPath => _trackingFile("sanctum-run-currency.csv");
     private string WidePath => _trackingFile("sanctum-run-wide.csv");
 
