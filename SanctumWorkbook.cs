@@ -48,6 +48,11 @@ public static class SanctumWorkbook
     private const int StyleTotalRun = 5;
     private const int StyleTotalDeal = 6;
     private const int StylePrice = 7;
+    private const int StyleTotalRunDivine = 8;
+    private const int StyleTotalDealDivine = 9;
+
+    // The heading Divine Orbs is written under, which is what the divine total divides by.
+    private static readonly string DivineColumn = CurrencyNames.ToShort("Divine Orbs");
 
     // Everything is one column right of where it would naturally start, leaving A for the
     // league. A run's data reading from B is a small cost; a workbook that does not say
@@ -113,6 +118,13 @@ public static class SanctumWorkbook
             {
                 error = "no price for " + string.Join(", ", unmatched) +
                         " - those columns count as nothing in the totals. Delete the CSV to start it again under the current headings.";
+            }
+            else if (!prices.Any(x => x.Chaos > 0 &&
+                         string.Equals(CurrencyNames.ToShort(x.Currency), DivineColumn, StringComparison.OrdinalIgnoreCase)))
+            {
+                // The divine column divides by the price sheet's divine row. Without one
+                // it reads empty rather than wrong, but empty wants explaining.
+                error = "no divine price, so total value d is blank. The chaos totals are unaffected.";
             }
 
             // Written to a temporary file and moved into place, so an export interrupted
@@ -180,7 +192,7 @@ public static class SanctumWorkbook
             xml.Append($"<col min=\"{column + FirstDataColumn}\" max=\"{column + FirstDataColumn}\" width=\"{width}\" customWidth=\"1\"/>");
         }
 
-        xml.Append($"<col min=\"{totalColumn}\" max=\"{totalColumn}\" width=\"13\" customWidth=\"1\"/>");
+        xml.Append($"<col min=\"{totalColumn}\" max=\"{totalColumn + 1}\" width=\"14\" customWidth=\"1\"/>");
         xml.Append("</cols><sheetData>");
 
         // Banded by run rather than by row, so a run's rows share a colour however many it
@@ -247,19 +259,32 @@ public static class SanctumWorkbook
                 }
             }
 
-            // The total, in its own colour, and a different one for a deal row than for a
-            // run row - the two are not summed together, so they should not look alike.
-            var totalReference = ColumnName(totalColumn) + (row + 1);
+            // Two totals: chaos, and the same figure in divine. Coloured by run or deal,
+            // since the two are not summed together and should not look as though they
+            // could be, and shaded apart by which total they are.
+            var chaosReference = ColumnName(totalColumn) + (row + 1);
+            var divineReference = ColumnName(totalColumn + 1) + (row + 1);
+
             if (row == 0)
             {
-                xml.Append(TextCell(totalReference, "total value", StyleHeader));
+                xml.Append(TextCell(chaosReference, "total value c", StyleHeader));
+                xml.Append(TextCell(divineReference, "total value d", StyleHeader));
             }
             else if (currencyIndexes.Count > 0)
             {
                 var isDeal = sourceColumn >= 0 &&
                              string.Equals(cells[sourceColumn], "deal", StringComparison.OrdinalIgnoreCase);
-                var style = isDeal ? StyleTotalDeal : StyleTotalRun;
-                xml.Append($"<c r=\"{totalReference}\" s=\"{style}\"><f>{TotalFormula(currencyIndexes, row)}</f></c>");
+
+                xml.Append($"<c r=\"{chaosReference}\" s=\"{(isDeal ? StyleTotalDeal : StyleTotalRun)}\">" +
+                           $"<f>{TotalFormula(currencyIndexes, row)}</f></c>");
+
+                // Divided by whatever the price sheet says a divine is, rather than by a
+                // rate fixed at export: correct the divine price and both totals follow.
+                // IFERROR covers a price sheet with no divine on it, where the division
+                // would otherwise fill the column with #DIV/0!.
+                var divine = $"IFERROR({chaosReference}/SUMIF(Prices!$B:$B,&quot;{DivineColumn}&quot;,Prices!$C:$C),&quot;&quot;)";
+                xml.Append($"<c r=\"{divineReference}\" s=\"{(isDeal ? StyleTotalDealDivine : StyleTotalRunDivine)}\">" +
+                           $"<f>{divine}</f></c>");
             }
 
             xml.Append("</row>");
@@ -446,16 +471,18 @@ public static class SanctumWorkbook
         "<font><sz val=\"11\"/><name val=\"Calibri\"/></font>" +
         "<font><b/><sz val=\"11\"/><name val=\"Calibri\"/></font>" +
         "</fonts>" +
-        "<fills count=\"5\">" +
+        "<fills count=\"7\">" +
         "<fill><patternFill patternType=\"none\"/></fill>" +
         "<fill><patternFill patternType=\"gray125\"/></fill>" +
         "<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFDCE6F1\"/><bgColor indexed=\"64\"/></patternFill></fill>" +
         "<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFE2EFDA\"/><bgColor indexed=\"64\"/></patternFill></fill>" +
         "<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFFCE4D6\"/><bgColor indexed=\"64\"/></patternFill></fill>" +
+        "<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFC6E0B4\"/><bgColor indexed=\"64\"/></patternFill></fill>" +
+        "<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFF8CBAD\"/><bgColor indexed=\"64\"/></patternFill></fill>" +
         "</fills>" +
         "<borders count=\"1\"><border/></borders>" +
         "<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>" +
-        "<cellXfs count=\"8\">" +
+        "<cellXfs count=\"10\">" +
         "<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/>" +
         "<xf numFmtId=\"0\" fontId=\"1\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyFont=\"1\"/>" +
         "<xf numFmtId=\"164\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>" +
@@ -464,6 +491,8 @@ public static class SanctumWorkbook
         "<xf numFmtId=\"2\" fontId=\"0\" fillId=\"3\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\" applyFill=\"1\"/>" +
         "<xf numFmtId=\"2\" fontId=\"0\" fillId=\"4\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\" applyFill=\"1\"/>" +
         "<xf numFmtId=\"2\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>" +
+        "<xf numFmtId=\"2\" fontId=\"0\" fillId=\"5\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\" applyFill=\"1\"/>" +
+        "<xf numFmtId=\"2\" fontId=\"0\" fillId=\"6\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\" applyFill=\"1\"/>" +
         "</cellXfs>" +
         "</styleSheet>";
 }
