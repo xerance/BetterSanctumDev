@@ -22,28 +22,31 @@ Prices come through the plugin bridge from anything registering
 and [Get-Chaos-Value](https://github.com/exApiTools/Get-Chaos-Value) both do, so either
 one will serve and there is no reason to run both.
 
-Donation addresses, carried over unchanged. BetterSanctum and PathfindSanctum publish the
-same pair, PathfindSanctum being a fork of BetterSanctum:
+Donation addresses, carried over unchanged:
 
-**BetterSanctum · PathfindSanctum**
+**BetterSanctum**
 
 BTC: bc1qke67907s6d5k3cm7lx7m020chyjp9e8ysfwtuz
 
-**BetterSanctum · PathfindSanctum**
+**BetterSanctum**
 
 ETH: 0x3A37B3f57453555C2ceabb1a2A4f55E0eB969105
 
-## Relationship to BetterSanctum
+## Relationship to BetterSanctumPlus
 
-A full copy of [xerance/BetterSanctum](https://github.com/xerance/BetterSanctum) with its
-history, worked on separately so the HUD can install both and the one you actually run
-stays working. It shows up as **BetterSanctumDev** in the plugin list, which is the
-namespace: the HUD labels the list entry by namespace and keys the settings file off the
-assembly name, so both had to move for the two to be separable. Settings live in
+Where changes are worked out, so that
+[xerance/BetterSanctumPlus](https://github.com/xerance/BetterSanctumPlus) - the one you
+actually run - stays working while they are. What reaches Plus is what has been played
+with rather than what was thought of.
+
+It shows up as **BetterSanctumDev** in the plugin list, which is the namespace: the HUD
+labels the list entry by namespace and keys the settings file off the assembly name, so
+both had to move for the two to be separable. Settings live in
 `BetterSanctumDev_settings.json`, logs in `Logs/BetterSanctumDev/`.
 
-Once this is in a state worth keeping, it merges back into BetterSanctum as an ordinary
-merge - the namespace, the class names and the project name are the only things to undo.
+Porting to Plus is a rename rather than a merge. The two differ by their namespace, their
+class names, their project name, and one `IgnoreMenu` attribute that hides the Debug
+section over there - the diagnostics being what this fork is for.
 
 **Do not enable both at once.** They draw the same overlay, so you get every frame and
 every line twice.
@@ -113,7 +116,7 @@ their meaning whatever the anchors are set to. A blocked affliction is never adj
 ## Run tracking
 
 Off by default. A window in the Forbidden Sanctum hub starts and ends a run, and End Run
-writes three files to `Logs/BetterSanctumDev/`:
+writes into `Logs/BetterSanctumDev/tracking/<tracking list>/`:
 
 - `sanctum-runs.csv` - a row per run: how long it took, what it paid across all four
   floors, how many deals you entered from floor 3 and what they gave up, how many rewards
@@ -122,10 +125,26 @@ writes three files to `Logs/BetterSanctumDev/`:
 - `sanctum-run-rooms.csv` - a row per room and reward slot, marked `map` or `window`. A
   Deal only ever produces `window` rows, since the map reads its rewards as empty and they
   exist only in the reward window while you stand there.
+- `sanctum-run-wide.csv` - a row per run and a row per its deals, with a column per
+  currency, which is the shape a spreadsheet charts. Which currencies get a column follows
+  a price threshold, or a list you tick by hand.
+
+Two more sit above the tracking lists, in `Logs/BetterSanctumDev/`, because every list
+adds to them:
+
 - `sanctum-deals.csv` - a row per offer of every deal you walked into, on any floor, with
   nothing filtered out. The run file reports deals under the same rules as the rest of the
   haul, which drops most of what a deal actually pays, so this is the raw record to work
   out what a deal is worth from once there is enough of it.
+- `sanctum-run-currency.csv` - the run again, one row per currency, which is the shape a
+  pivot table groups.
+
+Both carry the tracking list that wrote each row: a duplicate run counts a different slot
+as taken, so a row means something slightly different depending on which list produced it.
+
+**Export xlsx** builds a workbook from the wide file - runs banded by pair, totals in chaos
+and in divine as formulas against a price sheet, and a total row under the last run.
+**Blank template** writes the same workbook empty, for recording runs by hand.
 
 Hauls list chaos and anything worth five chaos a unit or more, richest first, since the
 long tail of alteration and chance says nothing about how a run went. Comma separated and
@@ -146,8 +165,9 @@ part way through a run does not lose it.
 - Hovering a room hides everything else on the map
 - Overlay gives way to tooltips and open panels
 - Profiles, each holding its own tiers, price overrides, run type and hide threshold
+- Tracking lists, each recording into a folder of its own
 
 ## Building
 
 Put the source in `Plugins/Source/BetterSanctumDev` and launch the HUD, which compiles
-it. Debug output goes to `Logs/BetterSanctumDev/` in the HUD root.
+it. Output goes to `Logs/BetterSanctumDev/` in the HUD root.
