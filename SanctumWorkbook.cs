@@ -52,6 +52,36 @@ public static class SanctumWorkbook
     private const int StyleTotalDealDivine = 9;
     private const int StyleFooter = 10;
     private const int StyleFooterValue = 11;
+    private const int StyleDuration = 12;
+    private const int StyleDurationBand = 13;
+    private const int StyleFooterDuration = 14;
+
+    // "17m08s" is what the CSV holds, because that is what reads well in a text file. A
+    // spreadsheet cannot add up text, so here it becomes a span of time - which displays
+    // much the same, sums natively, and is what the runs-per-hour figure divides by.
+    private static readonly System.Text.RegularExpressions.Regex DurationPattern =
+        new(@"^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static bool TryParseDuration(string text, out double days)
+    {
+        days = 0;
+        if (string.IsNullOrEmpty(text))
+        {
+            return false;
+        }
+
+        var match = DurationPattern.Match(text);
+        if (!match.Success || !match.Groups.Cast<System.Text.RegularExpressions.Group>().Skip(1).Any(x => x.Success))
+        {
+            return false;
+        }
+
+        double Part(int group) =>
+            match.Groups[group].Success ? double.Parse(match.Groups[group].Value, CultureInfo.InvariantCulture) : 0;
+
+        days = (Part(1) * 3600 + Part(2) * 60 + Part(3)) / 86400.0;
+        return true;
+    }
 
     // The heading Divine Orbs is written under, which is what the divine total divides by.
     private static readonly string DivineColumn = CurrencyNames.ToShort("Divine Orbs");
@@ -248,7 +278,7 @@ public static class SanctumWorkbook
             xml.Append($"<col min=\"{column + FirstDataColumn}\" max=\"{column + FirstDataColumn}\" width=\"{width}\" customWidth=\"1\"/>");
         }
 
-        xml.Append($"<col min=\"{totalColumn}\" max=\"{totalColumn + 1}\" width=\"14\" customWidth=\"1\"/>");
+        xml.Append($"<col min=\"{totalColumn}\" max=\"{totalColumn + 2}\" width=\"14\" customWidth=\"1\"/>");
         xml.Append("</cols><sheetData>");
 
         // Banded by run rather than by row, so a run's rows share a colour however many it
@@ -256,6 +286,7 @@ public static class SanctumWorkbook
         // banding of every run after it, which counting rows would.
         var runColumn = headers.FindIndex(x => string.Equals(x, "run", StringComparison.OrdinalIgnoreCase));
         var sourceColumn = headers.FindIndex(x => string.Equals(x, "source", StringComparison.OrdinalIgnoreCase));
+        var durationColumn = headers.FindIndex(x => string.Equals(x, "duration", StringComparison.OrdinalIgnoreCase));
 
         for (var row = 0; row < rows.Count; row++)
         {
@@ -304,6 +335,11 @@ public static class SanctumWorkbook
                     var serial = (date.Date - ExcelEpoch).TotalDays;
                     xml.Append($"<c r=\"{reference}\" s=\"{(tinted ? StyleDateBand : StyleDate)}\"><v>{Number(serial)}</v></c>");
                 }
+                else if (string.Equals(headers[column], "duration", StringComparison.OrdinalIgnoreCase) &&
+                         TryParseDuration(value, out var elapsed))
+                {
+                    xml.Append($"<c r=\"{reference}\" s=\"{(tinted ? StyleDurationBand : StyleDuration)}\"><v>{Number(elapsed)}</v></c>");
+                }
                 else if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var number))
                 {
                     var style = tinted ? $" s=\"{StyleBand}\"" : "";
@@ -321,10 +357,13 @@ public static class SanctumWorkbook
             var chaosReference = ColumnName(totalColumn) + (row + 1);
             var divineReference = ColumnName(totalColumn + 1) + (row + 1);
 
+            var rateReference = ColumnName(totalColumn + 2) + (row + 1);
+
             if (row == 0)
             {
                 xml.Append(TextCell(chaosReference, "total value c", StyleHeader));
                 xml.Append(TextCell(divineReference, "total value d", StyleHeader));
+                xml.Append(TextCell(rateReference, "d per hour", StyleHeader));
             }
             else if (currencyIndexes.Count > 0)
             {
@@ -341,12 +380,21 @@ public static class SanctumWorkbook
                 var divine = $"IFERROR({chaosReference}/SUMIF(Prices!$B:$B,&quot;{DivineColumn}&quot;,Prices!$C:$C),&quot;&quot;)";
                 xml.Append($"<c r=\"{divineReference}\" s=\"{(isDeal ? StyleTotalDealDivine : StyleTotalRunDivine)}\">" +
                            $"<f>{divine}</f></c>");
+
+                // Only where there is a duration to divide by, which is the run rows: a
+                // deal took no time of its own, it happened inside the run above it.
+                if (durationColumn >= 0 && !isDeal)
+                {
+                    var duration = ColumnName(durationColumn + FirstDataColumn) + (row + 1);
+                    xml.Append($"<c r=\"{rateReference}\" s=\"{StyleTotalRunDivine}\">" +
+                               $"<f>IFERROR({divineReference}/({duration}*24),&quot;&quot;)</f></c>");
+                }
             }
 
             xml.Append("</row>");
         }
 
-        xml.Append(Footer(rows.Count, headers, currencyIndexes, totalColumn, runColumn, sourceColumn));
+        xml.Append(Footer(rows.Count, headers, currencyIndexes, totalColumn, runColumn, sourceColumn, durationColumn));
         xml.Append("</sheetData></worksheet>");
         return xml.ToString();
     }
@@ -362,7 +410,8 @@ public static class SanctumWorkbook
         List<int> currencyIndexes,
         int totalColumn,
         int runColumn,
-        int sourceColumn)
+        int sourceColumn,
+        int durationColumn)
     {
         if (dataRows < 2 || sourceColumn < 0)
         {
@@ -405,6 +454,16 @@ public static class SanctumWorkbook
                 continue;
             }
 
+            // Summed outright rather than through SUMIF: only run rows carry a duration,
+            // so there is nothing on a deal row to exclude.
+            if (column == durationColumn)
+            {
+                var duration = ColumnName(column + FirstDataColumn);
+                xml.Append($"<c r=\"{reference}\" s=\"{StyleFooterDuration}\">" +
+                           $"<f>SUM(${duration}${first}:${duration}${last})</f></c>");
+                continue;
+            }
+
             xml.Append($"<c r=\"{reference}\" s=\"{StyleFooter}\"/>");
         }
 
@@ -413,9 +472,20 @@ public static class SanctumWorkbook
         if (currencyIndexes.Count > 0)
         {
             var chaos = ColumnName(totalColumn) + line;
+            var divine = ColumnName(totalColumn + 1) + line;
             xml.Append($"<c r=\"{chaos}\" s=\"{StyleFooterValue}\"><f>{TotalFormula(currencyIndexes, dataRows)}</f></c>");
-            xml.Append($"<c r=\"{ColumnName(totalColumn + 1)}{line}\" s=\"{StyleFooterValue}\">" +
+            xml.Append($"<c r=\"{divine}\" s=\"{StyleFooterValue}\">" +
                        $"<f>IFERROR({chaos}/SUMIF(Prices!$B:$B,&quot;{DivineColumn}&quot;,Prices!$C:$C),&quot;&quot;)</f></c>");
+
+            // Everything earned over everything spent earning it, rather than the average
+            // of the per-run rates: a fifteen minute run and an hour long one do not each
+            // count for half of how the session went.
+            if (durationColumn >= 0)
+            {
+                var duration = ColumnName(durationColumn + FirstDataColumn) + line;
+                xml.Append($"<c r=\"{ColumnName(totalColumn + 2)}{line}\" s=\"{StyleFooterValue}\">" +
+                           $"<f>IFERROR({divine}/({duration}*24),&quot;&quot;)</f></c>");
+            }
         }
 
         xml.Append("</row>");
@@ -593,7 +663,12 @@ public static class SanctumWorkbook
     private static string Styles() =>
         "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
         $"<styleSheet xmlns=\"{Main}\">" +
-        "<numFmts count=\"1\"><numFmt numFmtId=\"164\" formatCode=\"yyyy\\-mm\\-dd\"/></numFmts>" +
+        "<numFmts count=\"2\">" +
+        "<numFmt numFmtId=\"164\" formatCode=\"yyyy\\-mm\\-dd\"/>" +
+        // Square brackets on the hours so a total past twenty-four does not wrap round to
+        // nothing, which is what a plain h:mm:ss would do to a session of any length.
+        "<numFmt numFmtId=\"165\" formatCode=\"[h]:mm:ss\"/>" +
+        "</numFmts>" +
         "<fonts count=\"2\">" +
         "<font><sz val=\"11\"/><name val=\"Calibri\"/></font>" +
         "<font><b/><sz val=\"11\"/><name val=\"Calibri\"/></font>" +
@@ -610,7 +685,7 @@ public static class SanctumWorkbook
         "</fills>" +
         "<borders count=\"1\"><border/></borders>" +
         "<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>" +
-        "<cellXfs count=\"12\">" +
+        "<cellXfs count=\"15\">" +
         "<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/>" +
         "<xf numFmtId=\"0\" fontId=\"1\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyFont=\"1\"/>" +
         "<xf numFmtId=\"164\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>" +
@@ -623,6 +698,9 @@ public static class SanctumWorkbook
         "<xf numFmtId=\"2\" fontId=\"0\" fillId=\"6\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\" applyFill=\"1\"/>" +
         "<xf numFmtId=\"0\" fontId=\"1\" fillId=\"7\" borderId=\"0\" xfId=\"0\" applyFont=\"1\" applyFill=\"1\"/>" +
         "<xf numFmtId=\"2\" fontId=\"1\" fillId=\"7\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\" applyFont=\"1\" applyFill=\"1\"/>" +
+        "<xf numFmtId=\"165\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>" +
+        "<xf numFmtId=\"165\" fontId=\"0\" fillId=\"2\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\" applyFill=\"1\"/>" +
+        "<xf numFmtId=\"165\" fontId=\"1\" fillId=\"7\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\" applyFont=\"1\" applyFill=\"1\"/>" +
         "</cellXfs>" +
         "</styleSheet>";
 }
