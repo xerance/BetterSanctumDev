@@ -62,33 +62,6 @@ public class BetterSanctumDevSettings : ISettings
         "Orbs of Augmentation",
     };
 
-    // The columns of the wide run file, which is for tracking what a run was worth rather
-    // than everything it dropped. Everything here cleared five chaos a unit when the list
-    // was drawn, except Chaos itself, Exalted and Gemcutter's, which are kept by choice.
-    //
-    // A separate list from CurrencyTypes on purpose: that one has to stay complete, since
-    // it is what a price override can be set on. This one is a view, and a short one is
-    // the point of it. Ordered by what a unit was worth when it was written, which is a
-    // snapshot - the order is fixed so the file stays appendable, not because the economy
-    // is. Nothing else is recorded here at all; the whole haul is still in the chaos
-    // column, and every currency of it in sanctum-run-currency.csv.
-    public static readonly IReadOnlyList<string> WideCurrencyColumns = new List<string>
-    {
-        "Mirrors of Kalandra",
-        "Volatile Vaal Orbs",
-        "Fracturing Orbs",
-        "Divine Orbs",
-        "Veiled Chaos Orbs",
-        "Sacred Orbs",
-        "Orbs of Annulment",
-        "Ancient Orbs",
-        "Chromatic Orbs",
-        "Stacked Decks",
-        "Gemcutter's Prisms",
-        "Exalted Orbs",
-        "Chaos Orbs",
-    };
-
     // JsonIgnore matters here: Newtonsoft appends to an existing collection rather than
     // replacing it, so a serialised copy grew by five entries every time settings loaded.
     [JsonIgnore]
@@ -993,13 +966,61 @@ public class RunTrackingSettings
     [JsonIgnore]
     public CustomNode Help { get; set; } = SettingsHelp.Block(
         "Records one run at a time and writes it to Logs/BetterSanctumDev/ on End Run: sanctum-runs.csv holds a row per run, sanctum-run-rooms.csv a row per room and reward slot, sanctum-deals.csv every offer of every deal entered, sanctum-run-currency.csv the run row again as one row per currency, and sanctum-run-wide.csv a row per run with a column per currency.",
-        "The two spreadsheet files hold the same figures in the two shapes a spreadsheet wants: the currency file is what a pivot table groups, the wide file is what a chart plots. The wide file numbers its own runs and its columns never move, so a column sums straight down however many runs are in it. Its chaos column is the whole haul, including the long tail the run summary leaves out.",
+        "The two spreadsheet files hold the same figures in the two shapes a spreadsheet wants: the currency file is what a pivot table groups, the wide file is what a chart plots. The wide file numbers its own runs, and its chaos column is the whole haul including the long tail the run summary leaves out.",
+        "Which currencies get a column follows the price threshold below, so the sheet keeps up with the economy rather than a list written once. Chaos Orbs is always one of them - it is the unit the others are measured in. Tick the columns by hand instead to track something whatever it is worth, or to stop tracking something whatever it is worth.",
+        "A wide file keeps the columns it was started with, so changing any of this only takes effect in a new one. Delete the file to pick up a changed set; the quantity columns will not add up to chaos either way, since the tail is what the file leaves out.",
         "Rows are marked map or window. Map is what the floor map showed. Window is what the reward window said while you stood in the room, which for a Deal room is the only place its rewards appear at all - the map reads them as empty.",
         "Start and End sit in a window that appears while you are in the Forbidden Sanctum hub. An unfinished run is kept in run-state.json, so restarting the HUD part way through does not lose it.",
         "What a run produced is worked out from the rooms you entered, assuming you took the most valuable slot in each. Nothing reads what you actually clicked, so treat the haul as an estimate - and an optimistic one, since the best slot is usually the end-of-Sanctum deferral, which pays nothing if the run ends early.",
         "On a duplicate run the assumption follows the same rule the offer window draws: the slots crossed out on screen are not counted as taken, so the haul cannot credit you with a reward the overlay told you to walk past.");
 
     public ToggleNode TrackRuns { get; set; } = new ToggleNode(false);
+
+    // Which currencies get a column in the wide file. By price by default, so the sheet
+    // follows the economy instead of a list written once and left to rot - an exalt led
+    // the sheet this was modelled on and is worth under two chaos now.
+    public RangeNode<int> TrackedCurrencyMinChaos { get; set; } = new RangeNode<int>(5, 0, 1000);
+
+    // Ticked by hand instead, for a currency you want tracked whatever it is worth, or one
+    // you do not want tracked whatever it is worth.
+    public ToggleNode OverrideTrackedCurrencies { get; set; } = new ToggleNode(false);
+
+    [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
+    public Dictionary<string, bool> TrackedCurrencies { get; set; } = new Dictionary<string, bool>();
+
+    [JsonIgnore]
+    public CustomNode TrackedCurrencyNode { get; set; }
+
+    public RunTrackingSettings()
+    {
+        var filter = "";
+        TrackedCurrencyNode = new CustomNode
+        {
+            DrawDelegate = () =>
+            {
+                if (!OverrideTrackedCurrencies)
+                {
+                    return;
+                }
+
+                ImGui.InputTextWithHint("##TrackedCurrencyFilter", "Filter", ref filter, 100);
+                foreach (var type in BetterSanctumDevSettings.CurrencyTypes)
+                {
+                    if (filter.Length > 0 &&
+                        !type.Contains(filter, StringComparison.InvariantCultureIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    var tracked = TrackedCurrencies.GetValueOrDefault(type, false);
+                    if (ImGui.Checkbox(type, ref tracked))
+                    {
+                        TrackedCurrencies[type] = tracked;
+                    }
+                }
+            }
+        };
+    }
 }
 
 [Submenu(CollapsedByDefault = true)]

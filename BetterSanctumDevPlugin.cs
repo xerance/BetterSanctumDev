@@ -82,8 +82,7 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
             LogFilePath("sanctum-deals.csv"),
             LogFilePath("sanctum-run-currency.csv"),
             LogFilePath("sanctum-run-wide.csv"),
-            LogFilePath("run-state.json"),
-            BetterSanctumDevSettings.WideCurrencyColumns);
+            LogFilePath("run-state.json"));
         // Picks a run back up after a HUD restart part way through one
         _runTracker.Load();
         return base.Initialise();
@@ -889,6 +888,29 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
         return ResolvePriceLookup() == null ? null : UnitPriceForCurrency;
     }
 
+    // Which currencies get a column in the wide run file. By price unless the columns have
+    // been ticked by hand, and sorted by name either way: the set can change between runs,
+    // and a value order frozen into a header written weeks ago would read as a claim about
+    // today's prices that it is not.
+    //
+    // Chaos Orbs is always in the priced set. It is the unit every other column is measured
+    // in and it prices at one, so any threshold above that would drop it.
+    private IReadOnlyList<string> ResolveWideColumns()
+    {
+        var tracking = Settings.RunTracking;
+        var chosen = tracking.OverrideTrackedCurrencies
+            ? BetterSanctumDevSettings.CurrencyTypes
+                .Where(x => tracking.TrackedCurrencies.GetValueOrDefault(x, false))
+            : BetterSanctumDevSettings.CurrencyTypes
+                .Where(x => UnitPriceForCurrency(x) >= tracking.TrackedCurrencyMinChaos.Value)
+                .Append("Chaos Orbs");
+
+        return chosen
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
     // The same rule PreventLastOffer draws on screen, so the tracked haul matches what the
     // overlay told you to take. Null on an ordinary run, where every slot is fair game.
     //
@@ -938,7 +960,7 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
 
             if (ImGui.Button("End Run (write CSV)"))
             {
-                var floors = _runTracker.EndRun(ResolveUnitPriceByName(), ResolveTakeableSlotRule());
+                var floors = _runTracker.EndRun(ResolveUnitPriceByName(), ResolveTakeableSlotRule(), ResolveWideColumns());
                 if (floors < 0)
                 {
                     LogError($"[BetterSanctum] could not write the run: {_runTracker.LastError}", 30);

@@ -67,13 +67,14 @@ public class SanctumRunTracker
     // A row per run and a column per currency: the shape a spreadsheet charts without
     // being reshaped first, where the long file above is the shape it pivots.
     //
-    // The columns are the fixed currency list rather than what a run happened to pay, so
-    // the header never moves under rows already written. A currency the run did not pay
-    // is a zero, which is what makes a column summable straight down.
+    // Which currencies get a column is a setting and can change; which ones a given file
+    // has cannot, so a file keeps the columns it was started with and only a new file picks
+    // up a new set. A currency the run did not pay is a zero, which is what makes a column
+    // summable straight down.
     //
     // run counts rows already in the file, so it is a stable x axis across runs. chaos is
     // the whole haul including the long tail the run summary filters out of sight.
-    private readonly IReadOnlyList<string> _currencyColumns;
+    private const string WideFixedHeader = "when,run,runId,duration,chaos,deals,dealChaos";
 
     private readonly string _runPath;
     private readonly string _roomPath;
@@ -89,8 +90,7 @@ public class SanctumRunTracker
         string dealPath,
         string currencyPath,
         string widePath,
-        string statePath,
-        IReadOnlyList<string> currencyColumns)
+        string statePath)
     {
         _runPath = runPath;
         _roomPath = roomPath;
@@ -98,21 +98,7 @@ public class SanctumRunTracker
         _currencyPath = currencyPath;
         _widePath = widePath;
         _statePath = statePath;
-        _currencyColumns = currencyColumns ?? new List<string>();
     }
-
-    // The columns are the rewards worth tracking, not every currency a run pays, so the
-    // quantity columns deliberately do not add up to chaos - the difference is the tail
-    // this file exists to leave out. Nothing is lost by it: chaos counts the whole haul,
-    // and sanctum-run-currency.csv itemises every currency of it.
-    //
-    // deals and dealChaos are a part of chaos, not an addition to it: a deal is a room,
-    // and what it paid is already in the run's haul and in its currency columns. They are
-    // here so the share of a run that came out of deals can be read off without going to
-    // the deal file for it.
-    private string WideHeader =>
-        "when,run,runId,duration,chaos,deals,dealChaos," +
-        string.Join(",", _currencyColumns.Select(Field));
 
     public RunState Current { get; private set; }
 
@@ -494,7 +480,10 @@ public class SanctumRunTracker
 
     // Writes the run out and clears it. Returns how many floor rows were written, or -1 if
     // nothing could be written, so the caller can say so rather than silently succeeding.
-    public int EndRun(Func<string, double> unitPrice, Func<int, int, string, bool> canTake = null)
+    public int EndRun(
+        Func<string, double> unitPrice,
+        Func<int, int, string, bool> canTake = null,
+        IReadOnlyList<string> wideColumns = null)
     {
         if (Current == null)
         {
@@ -684,7 +673,7 @@ public class SanctumRunTracker
             Append(_roomPath, RoomHeader, roomRows);
             Append(_dealPath, DealHeader, dealRows);
             Append(_currencyPath, CurrencyHeader, currencyRows);
-            Append(_widePath, WideHeader, new List<string> { WideRow(run, runTakes, dealsEntered, dealTakes, unitPrice) });
+            AppendWide(run, wideColumns, runTakes, dealsEntered, dealTakes, unitPrice);
             Current = null;
             TryDelete(_statePath);
             LastError = null;
@@ -708,16 +697,34 @@ public class SanctumRunTracker
         return string.Join(",", values.Select(Field));
     }
 
-    // One run across, in the fixed column order. Nothing is filtered: a column that is
-    // always zero can be hidden in the spreadsheet, but a column that is sometimes missing
-    // cannot be summed at all.
-    private string WideRow(
+    // One run across. The columns tracked can change between runs - they follow prices
+    // unless they have been ticked by hand - so the file's own header decides what this
+    // row contains, and the caller's list is only used when there is no file yet.
+    //
+    // Writing today's set into a file written under a different one would put quantities
+    // under the wrong headings, silently, for every row after it. A currency that has
+    // since stopped being tracked keeps its column and reads zero; one that has started
+    // being tracked does not appear until the file is started again.
+    //
+    // The quantity columns deliberately do not add up to chaos. The difference is the tail
+    // this file exists to leave out, and it is still counted in chaos and itemised per
+    // currency in sanctum-run-currency.csv.
+    private void AppendWide(
         RunState run,
+        IReadOnlyList<string> wantedColumns,
         List<SlotObservation> takes,
         int dealsEntered,
         List<SlotObservation> dealTakes,
         Func<string, double> unitPrice)
     {
+        var columns = ExistingWideColumns() ?? wantedColumns ?? new List<string>();
+        if (!File.Exists(_widePath))
+        {
+            File.AppendAllText(
+                _widePath,
+                WideFixedHeader + "," + string.Join(",", columns.Select(Field)) + Environment.NewLine);
+        }
+
         var quantities = takes
             .Where(x => x != null && !string.IsNullOrEmpty(x.Currency))
             .GroupBy(x => x.Currency)
@@ -737,10 +744,41 @@ public class SanctumRunTracker
             Math.Round(dealTakes.Sum(x => SlotValue(x, unitPrice)), 2),
         };
 
-        values.AddRange(_currencyColumns.Select(currency =>
+        values.AddRange(columns.Select(currency =>
             (object)quantities.GetValueOrDefault(currency, 0)));
 
-        return Row(values.ToArray());
+        var stamp = DateTime.Now.ToString("s");
+        File.AppendAllLines(_widePath, new[] { $"{stamp},{Row(values.ToArray())}" });
+    }
+
+    // The currency columns a wide file was started with, or null if there is no file yet.
+    // Split on commas without quote handling, which is safe because a currency name has
+    // none - and Field would only quote one that did.
+    private IReadOnlyList<string> ExistingWideColumns()
+    {
+        try
+        {
+            if (!File.Exists(_widePath))
+            {
+                return null;
+            }
+
+            var header = File.ReadLines(_widePath).FirstOrDefault();
+            if (string.IsNullOrEmpty(header))
+            {
+                return null;
+            }
+
+            return header
+                .Split(',')
+                .Skip(WideFixedHeader.Split(',').Length)
+                .Where(x => x.Length > 0)
+                .ToList();
+        }
+        catch (Exception)
+        {
+            return null;
+        }
     }
 
     // How many runs the file already holds, so a run can carry its own index rather than
