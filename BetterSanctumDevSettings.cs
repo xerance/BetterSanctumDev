@@ -523,7 +523,7 @@ public class BetterSanctumDevSettings : ISettings
         ["Unassuming Brick"] = 4,
         ["Rapid Quicksand"] = 4,
         ["Phantom Illusion"] = 4,
-        ["Black Smoke"] = 4,
+        ["Black Smoke"] = 3,
         ["Anomaly Attractor"] = 4,
         ["Corrupted Lockpick"] = 4,
 
@@ -636,7 +636,7 @@ public class BetterSanctumDevSettings : ISettings
         profile.RoomTiers = new Dictionary<string, int>(DefaultRoomTiers);
         profile.AfflictionTiers = new Dictionary<string, int>(DefaultAfflictionTiers);
         profile.HideRewardsBelowChaos = -1;
-        profile.RunType = RunTypeDefault;
+        profile.RunType = RunTypeNormal;
         profile.ScaleVersion = CurrentScaleVersion;
     }
 
@@ -770,10 +770,10 @@ public class ProfileContent
     // current by CreateNew.
     public int ScaleVersion = 1;
 
-    public int RunType = BetterSanctumDevSettings.RunTypeDefault;
+    // Normal rather than Default. Default applies no adjustments, which is the honest
+    // baseline to compare the rest against and not what anybody actually runs.
+    public int RunType = BetterSanctumDevSettings.RunTypeNormal;
 
-    // Superseded by RunType. Read once by MigrateProfile, unused after.
-    public bool DuplicateRun = false;
     public int HideRewardsBelowChaos = -1;
     // Chaos per unit where you disagree with the market. Absent means use the price;
     // zero means the reward is worth nothing and should not pull a route.
@@ -979,9 +979,15 @@ public class RunTrackingSettings
         "Rows are marked map or window. Map is what the floor map showed. Window is what the reward window said while you stood in the room, which for a Deal room is the only place its rewards appear at all - the map reads them as empty.",
         "Start and End sit in a window that appears while you are in the Forbidden Sanctum hub. An unfinished run is kept in run-state.json, so restarting the HUD part way through does not lose it.",
         "What a run produced is worked out from the rooms you entered, assuming you took the most valuable slot in each. Nothing reads what you actually clicked, so treat the haul as an estimate - and an optimistic one, since the best slot is usually the end-of-Sanctum deferral, which pays nothing if the run ends early.",
-        "On a duplicate run the assumption follows the same rule the offer window draws: the slots crossed out on screen are not counted as taken, so the haul cannot credit you with a reward the overlay told you to walk past.");
+        "On a duplicate run the assumption follows the same rule the offer window draws: the slots crossed out on screen are not counted as taken, so the haul cannot credit you with a reward the overlay told you to walk past.",
+        "Track rewards appends every distinct reward seen to Logs/BetterSanctumDev/sanctum-rewards.csv: what the map offers and where, the room tooltip, and the reward window text. It fills in the measured quantity table the routing prices rewards from, so it is worth leaving on across a league.");
 
     public ToggleNode TrackRuns { get; set; } = new ToggleNode(false);
+
+    // Records rather than diagnoses, which is why it is here and not under Debug. It fills
+    // in the quantity table the routing prices rewards from, so it is worth leaving on
+    // across a league rather than turning on to look at something.
+    public ToggleNode TrackRewards { get; set; } = new ToggleNode(false);
 
     // A share of a divine rather than a chaos figure, so the columns keep up with the
     // economy instead of a list written once and left to rot - an exalt led the sheet this
@@ -1239,10 +1245,8 @@ public class DebugSettings
     [JsonIgnore]
     public CustomNode Help { get; set; } = SettingsHelp.Block(
         "Writes Logs/BetterSanctumDev/room-dump.txt once each time the floor map is opened, listing the raw data behind every room.",
-        "Track rewards appends every distinct reward seen to Logs/BetterSanctumDev/sanctum-rewards.csv: what the map offers and where, the room tooltip, and the reward window text. Leave it on across runs and the table fills in.",
         "Probe sanctum state appends to Logs/BetterSanctumDev/sanctum-probe.txt: every area you enter, and the floor data - gold, resolve, room choices and accrued rewards - each time it changes. Turn it on for one full run, from the Forbidden Sanctum through all four floors and back out, then read the file.");
 
     public ToggleNode DebugDumpRoomData { get; set; } = new ToggleNode(false);
-    public ToggleNode TrackRewards { get; set; } = new ToggleNode(false);
     public ToggleNode ProbeSanctumState { get; set; } = new ToggleNode(false);
 }

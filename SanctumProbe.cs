@@ -68,8 +68,8 @@ public class SanctumProbe
     }
 
     // Unknown 1. The hub is a static zone entered from the map device rather than from a
-    // floor, so it never appears while the floor map is open. Both Id and RawName are
-    // logged: Id is the internal identifier and the better thing to key on if they differ.
+    // floor, so it never appears while the floor map is open. Keyed on Id, which is what
+    // the rest of this reads areas by - RawName was the same string and is now obsolete.
     public void LogAreaChange(AreaInstance area, SanctumFloorWindow floorWindow)
     {
         if (area?.Area == null)
@@ -78,7 +78,7 @@ public class SanctumProbe
             return;
         }
 
-        Write($"area id={area.Area.Id} raw={area.Area.RawName} name={area.Area.Name} " +
+        Write($"area id={area.Area.Id} name={area.Area.Name} " +
               $"level={area.Area.AreaLevel} town={area.IsTown} hideout={area.IsHideout} " +
               $"instance={area.InstanceId} | {DescribeFloorWindow(floorWindow)}");
     }
@@ -110,7 +110,7 @@ public class SanctumProbe
     // accrued-but-not-yet-paid rewards would take. This logs it whenever it changes, so
     // taking an offer should show up as a new or grown entry, and the end of a floor
     // should show the deferral bucket emptying.
-    public void LogState(SanctumFloorWindow floorWindow, string areaRawName)
+    public void LogState(SanctumFloorWindow floorWindow, string areaId)
     {
         // Rate limited rather than per frame, and written only on change: the interesting
         // signal is the transition, not the steady state.
@@ -124,7 +124,7 @@ public class SanctumProbe
         string key;
         try
         {
-            key = DescribeState(floorWindow, areaRawName);
+            key = DescribeState(floorWindow, areaId);
         }
         catch (Exception e)
         {
@@ -140,22 +140,22 @@ public class SanctumProbe
         Write(key);
     }
 
-    private static string DescribeState(SanctumFloorWindow floorWindow, string areaRawName)
+    private static string DescribeState(SanctumFloorWindow floorWindow, string areaId)
     {
         if (floorWindow == null)
         {
-            return $"state area={areaRawName} floorWindow=<null>";
+            return $"state area={areaId} floorWindow=<null>";
         }
 
         var data = floorWindow.FloorData;
         if (data == null)
         {
-            return $"state area={areaRawName} {DescribeFloorWindow(floorWindow)} floorData=<null>";
+            return $"state area={areaId} {DescribeFloorWindow(floorWindow)} floorData=<null>";
         }
 
         var parts = new List<string>
         {
-            $"state area={areaRawName}",
+            $"state area={areaId}",
             $"windowVisible={floorWindow.IsVisible}",
             $"floorData={data.Address:X}",
             $"gold={data.Gold}",

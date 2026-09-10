@@ -744,7 +744,7 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
             return;
         }
 
-        var areaKey = $"{GameController.Area?.CurrentArea?.Area?.RawName}/{GameController.Area?.CurrentArea?.InstanceId}";
+        var areaKey = $"{GameController.Area?.CurrentArea?.Area?.Id}/{GameController.Area?.CurrentArea?.InstanceId}";
         if (areaKey == _lastBuffProbeArea)
         {
             return;
@@ -1140,7 +1140,7 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
         if (Settings.Debug.ProbeSanctumState)
         {
             _probe.LogState(GameController?.IngameState?.IngameUi?.SanctumFloorWindow,
-                GameController?.Area?.CurrentArea?.Area?.RawName);
+                GameController?.Area?.CurrentArea?.Area?.Id);
             ProbeBuffs();
         }
 
@@ -1155,7 +1155,7 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
             PreventLastOffer();
         }
 
-        if (Settings.Debug.TrackRewards)
+        if (Settings.RunTracking.TrackRewards)
         {
             TrackOfferWindow();
         }
@@ -1164,7 +1164,7 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
         
         // Only inside a Sanctum, and before the floor-map return below, since these draw
         // in the room rather than on the map
-        if (GameController.Area.CurrentArea.Area.RawName.StartsWith("Sanctum"))
+        if (GameController.Area.CurrentArea.Area.Id.StartsWith("Sanctum"))
         {
             _effectHelper.DrawEffects();
         }
@@ -1215,7 +1215,7 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
             }
         }
 
-        if (Settings.Debug.TrackRewards)
+        if (Settings.RunTracking.TrackRewards)
         {
             var trackedFloor = BetterSanctumDevSettings.GetFloorForRoomPrefix(_lastKnownFloorPrefix);
             if (hoveredRoom != null)
@@ -1280,7 +1280,7 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
 
                 var lines = new List<string>
                 {
-                    $"{DateTime.Now:s} floorPrefix={floorPrefix} area={GameController.Area.CurrentArea.Area.RawName} layers={roomsByLayer.Count}",
+                    $"{DateTime.Now:s} floorPrefix={floorPrefix} area={GameController.Area.CurrentArea.Area.Id} layers={roomsByLayer.Count}",
                     "WINDOW " + string.Join(", ", DebugWindowMemberNames.Select(name => DescribeMember(floorWindow, name))),
                     "FLOORDATA " + string.Join(", ", DebugWindowMemberNames.Select(name => DescribeMember(floorWindow.FloorData, name))),
                 };
