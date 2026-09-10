@@ -82,9 +82,13 @@ public class SanctumRunTracker
     // summable straight down. run counts the rows already in the file, so it is a stable x
     // axis across runs.
     //
+    // No count of deal rooms. Sitting in front of the currency columns and named like one,
+    // it read as a currency, and the deal row already says a run had deals in it. The count
+    // itself is not lost - dealsEntered is a column of sanctum-runs.csv.
+    //
     // runId trails everything, out of the way of what is worth reading, because it is the
     // key the other three files join on and dropping it would strand them.
-    private const string WideFixedHeader = "date,run,source,duration,deals";
+    private const string WideFixedHeader = "date,run,source,duration";
     private const string WideTrailingHeader = "runId";
 
     // Resolved on every use rather than held, because the tracking profile decides which
@@ -693,7 +697,7 @@ public class SanctumRunTracker
             Append(RoomPath, RoomHeader, roomRows);
             Append(DealPath, DealHeader, dealRows);
             Append(CurrencyPath, CurrencyHeader, currencyRows);
-            AppendWide(run, wideColumns, runTakes, dealsEntered, dealTakes);
+            AppendWide(run, wideColumns, runTakes, dealTakes);
             Current = null;
             TryDelete(_statePath);
             LastError = null;
@@ -726,14 +730,12 @@ public class SanctumRunTracker
     // since stopped being tracked keeps its column and reads zero; one that has started
     // being tracked does not appear until the file is started again.
     //
-    // The quantity columns deliberately do not add up to chaos. The difference is the tail
-    // this file exists to leave out, and it is still counted in chaos and itemised per
-    // currency in sanctum-run-currency.csv.
+    // The currencies without a column are not written here at all - they are the tail this
+    // file exists to leave out, and sanctum-run-currency.csv still itemises every one.
     private void AppendWide(
         RunState run,
         IReadOnlyList<string> wantedColumns,
         List<SlotObservation> takes,
-        int dealsEntered,
         List<SlotObservation> dealTakes)
     {
         var columns = ExistingWideColumns() ?? wantedColumns ?? new List<string>();
@@ -754,10 +756,8 @@ public class SanctumRunTracker
         // it reads as a second run at a glance. The run number ties the two together.
         var rows = new List<string>
         {
-            WideRow(columns, date, index, "run", DescribeDuration(run.Ended - run.Started),
-                null, takes, run.RunId),
-            WideRow(columns, null, index, "deal", null,
-                dealsEntered, dealTakes, run.RunId),
+            WideRow(columns, date, index, "run", DescribeDuration(run.Ended - run.Started), takes, run.RunId),
+            WideRow(columns, null, index, "deal", null, dealTakes, run.RunId),
         };
 
         File.AppendAllLines(WidePath, rows);
@@ -772,7 +772,6 @@ public class SanctumRunTracker
         int index,
         string source,
         string duration,
-        int? deals,
         List<SlotObservation> takes,
         string runId)
     {
@@ -786,7 +785,6 @@ public class SanctumRunTracker
             index,
             source,
             duration,
-            deals,
         };
 
         // A column written short still holds a currency's full name underneath, and a file
