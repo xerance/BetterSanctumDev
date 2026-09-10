@@ -180,7 +180,7 @@ public class BetterSanctumDevSettings : ISettings
                     if (key == profileName)
                     {
                         ImGui.PushStyleColor(ImGuiCol.FrameBg, Color.DarkGreen.ToImgui());
-                        if (ImGui.InputText("Current profile (Enter to rename)", ref renameBuffer, 200, ImGuiInputTextFlags.EnterReturnsTrue))
+                        if (ImGui.InputText("Profile name (Enter to rename)##renameProfile", ref renameBuffer, 200, ImGuiInputTextFlags.EnterReturnsTrue))
                         {
                             RenameProfile(profileName, renameBuffer);
                             renameBufferOwner = null;
@@ -1095,6 +1095,10 @@ public class RunTrackingSettings
                 SettingsHelp.Hint("Writes sanctum-run-template.xlsx: the same workbook with no runs in it, twenty pairs of empty rows to fill in by hand." +
                      "\n\nThe totals are the same formulas, so a quantity typed into a currency column prices itself. For recording runs without the HUD having written them - the columns are the ones this list tracks and the prices are today's.");
 
+                // Where the runs go, said outright. The folder is named after the selected
+                // list, and nothing else on screen made that connection visible.
+                SettingsHelp.DisabledText($"Writing to tracking/{ProfileFolder()}/");
+
                 foreach (var key in Profiles.Keys.OrderBy(x => x).ToList())
                 {
                     if (key == CurrentProfile)
@@ -1125,12 +1129,18 @@ public class RunTrackingSettings
                     renameBuffer = CurrentProfile ?? "";
                 }
 
-                if (ImGui.InputText("Name##renameTracking", ref renameBuffer, 64, ImGuiInputTextFlags.EnterReturnsTrue))
+                // Labelled for what it is, not just "Name". There is a profile name at the
+                // top of these settings as well, and renaming that one does nothing to
+                // where runs are written - which is exactly the mistake the bare label
+                // invited, since only this name reaches the folder.
+                if (ImGui.InputText("Tracking list name (Enter to rename)##renameTracking",
+                        ref renameBuffer, 64, ImGuiInputTextFlags.EnterReturnsTrue))
                 {
                     RenameProfile(CurrentProfile, renameBuffer);
                 }
 
-                SettingsHelp.Hint("Press Enter to rename. The folder the profile writes into is named after it, so renaming starts a new one - the old folder keeps the runs already in it.");
+                SettingsHelp.Hint("Press Enter to rename. This is the tracking list, not the profile at the top of these settings - the two are separate, and only this one names the folder runs are written to." +
+                     "\n\nRenaming starts a new folder. The old one keeps the runs already in it.");
 
                 if (ImGui.Button("Add tracking list##addTracking"))
                 {
