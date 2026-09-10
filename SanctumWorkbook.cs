@@ -97,12 +97,20 @@ public static class SanctumWorkbook
         xml.Append("<pane ySplit=\"1\" topLeftCell=\"A2\" activePane=\"bottomLeft\" state=\"frozen\"/>");
         xml.Append("</sheetView></sheetViews>");
 
-        // Wide enough for the heading, since the headings are the short names and the
-        // values under them are quantities
+        // Wide enough for the widest thing in the column, heading or value, rather than
+        // for the heading alone - "volatile vaal" is a wide heading over a narrow number,
+        // and "17m08s" is a wide number under a narrow heading. Measured off the text in
+        // the CSV, which is what a cell displays: a date cell holds a serial but shows the
+        // ten characters it was written as.
+        //
+        // Capped, because one long value should not push everything after it off the
+        // screen, and floored, so a column of single digits is still clickable.
         xml.Append("<cols>");
         for (var column = 0; column < keep.Count; column++)
         {
-            var width = Math.Max(rows[0][keep[column]].Length + 3, 7);
+            var index = keep[column];
+            var widest = rows.Max(row => index < row.Count ? row[index].Length : 0);
+            var width = Math.Clamp(widest + 2, 6, 24);
             xml.Append($"<col min=\"{column + 1}\" max=\"{column + 1}\" width=\"{width}\" customWidth=\"1\"/>");
         }
 

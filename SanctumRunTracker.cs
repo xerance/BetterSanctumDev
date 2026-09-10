@@ -64,29 +64,27 @@ public class SanctumRunTracker
     private const string CurrencyHeader =
         "when,runId,source,currency,quantity,unitChaos,totalChaos";
 
-    // A row per run and a column per currency: the shape a spreadsheet charts without
-    // being reshaped first, where the long file above is the shape it pivots.
+    // A column per currency: the shape a spreadsheet charts without being reshaped first,
+    // where the long file above is the shape it pivots.
+    //
+    // Two rows a run - what the run paid, then what the deals in it paid, in the same
+    // columns. A deal is a room, so the deal row is part of the run row rather than an
+    // addition to it: filter on source rather than summing both. Only the run row carries
+    // the date, since repeating it reads at a glance as a second run.
+    //
+    // Counts only. What a haul was worth is a valuation rather than something that dropped,
+    // and a fractional chaos figure beside a column of quantities invites being read as a
+    // number of orbs. Value lives in sanctum-run-currency.csv, per currency.
     //
     // Which currencies get a column is a setting and can change; which ones a given file
     // has cannot, so a file keeps the columns it was started with and only a new file picks
     // up a new set. A currency the run did not pay is a zero, which is what makes a column
-    // summable straight down.
+    // summable straight down. run counts the rows already in the file, so it is a stable x
+    // axis across runs.
     //
-    // run counts rows already in the file, so it is a stable x axis across runs. chaos is
-    // the whole haul including the long tail the run summary filters out of sight.
-    // Two rows a run: what the run paid, then what the deals in it paid, in the same
-    // columns. A deal is a room, so the deal row is part of the run row rather than an
-    // addition to it - filter on source rather than summing both.
-    //
-    // A date and no clock: two runs are never told apart by the second they ended, and a
-    // full timestamp is a column you have to reformat before a spreadsheet will group it.
-    // runId is last, out of the way of everything worth reading, because it is the key the
-    // other three files join on and dropping it would strand them.
-    // chaosValue rather than chaos: the currency columns are counts, and one of them is
-    // Chaos Orbs, headed "chaos". Two columns of that name in one sheet is a duplicate
-    // heading a pivot table cannot tell apart, and reads as a count of chaos orbs when it
-    // is what the whole haul came to.
-    private const string WideFixedHeader = "date,run,source,duration,chaosValue,deals";
+    // runId trails everything, out of the way of what is worth reading, because it is the
+    // key the other three files join on and dropping it would strand them.
+    private const string WideFixedHeader = "date,run,source,duration,deals";
     private const string WideTrailingHeader = "runId";
 
     // Resolved on every use rather than held, because the tracking profile decides which
@@ -695,7 +693,7 @@ public class SanctumRunTracker
             Append(RoomPath, RoomHeader, roomRows);
             Append(DealPath, DealHeader, dealRows);
             Append(CurrencyPath, CurrencyHeader, currencyRows);
-            AppendWide(run, wideColumns, runTakes, dealsEntered, dealTakes, unitPrice);
+            AppendWide(run, wideColumns, runTakes, dealsEntered, dealTakes);
             Current = null;
             TryDelete(_statePath);
             LastError = null;
@@ -736,8 +734,7 @@ public class SanctumRunTracker
         IReadOnlyList<string> wantedColumns,
         List<SlotObservation> takes,
         int dealsEntered,
-        List<SlotObservation> dealTakes,
-        Func<string, double> unitPrice)
+        List<SlotObservation> dealTakes)
     {
         var columns = ExistingWideColumns() ?? wantedColumns ?? new List<string>();
         if (!File.Exists(WidePath))
@@ -758,9 +755,9 @@ public class SanctumRunTracker
         var rows = new List<string>
         {
             WideRow(columns, date, index, "run", DescribeDuration(run.Ended - run.Started),
-                null, takes, unitPrice, run.RunId),
+                null, takes, run.RunId),
             WideRow(columns, null, index, "deal", null,
-                dealsEntered, dealTakes, unitPrice, run.RunId),
+                dealsEntered, dealTakes, run.RunId),
         };
 
         File.AppendAllLines(WidePath, rows);
@@ -777,7 +774,6 @@ public class SanctumRunTracker
         string duration,
         int? deals,
         List<SlotObservation> takes,
-        Func<string, double> unitPrice,
         string runId)
     {
         var quantities = takes
@@ -785,16 +781,11 @@ public class SanctumRunTracker
             .GroupBy(x => x.Currency)
             .ToDictionary(g => g.Key, g => g.Sum(x => x.Quantity), StringComparer.OrdinalIgnoreCase);
 
-        // The whole haul, long tail included, rather than the filtered figure the run
-        // summary prints. This is the column a run is judged on.
-        var chaos = takes.Sum(x => SlotValue(x, unitPrice));
-
         var values = new List<object>
         {
             index,
             source,
             duration,
-            Math.Round(chaos, 2),
             deals,
         };
 
