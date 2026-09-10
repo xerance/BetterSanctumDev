@@ -83,7 +83,7 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
             LogFilePath("sanctum-run-currency.csv"),
             LogFilePath("sanctum-run-wide.csv"),
             LogFilePath("run-state.json"),
-            BetterSanctumDevSettings.CurrencyTypes);
+            BetterSanctumDevSettings.WideCurrencyColumns);
         // Picks a run back up after a HUD restart part way through one
         _runTracker.Load();
         return base.Initialise();

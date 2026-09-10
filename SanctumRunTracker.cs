@@ -101,10 +101,10 @@ public class SanctumRunTracker
         _currencyColumns = currencyColumns ?? new List<string>();
     }
 
-    // "other" is the safety net. The columns are a list written by hand, so a reward
-    // category it does not know about would otherwise be dropped without trace - which is
-    // exactly what happened to Ancient Orbs. Anything without a column of its own is named
-    // there instead, where it is visible rather than missing.
+    // The columns are the rewards worth tracking, not every currency a run pays, so the
+    // quantity columns deliberately do not add up to chaos - the difference is the tail
+    // this file exists to leave out. Nothing is lost by it: chaos counts the whole haul,
+    // and sanctum-run-currency.csv itemises every currency of it.
     //
     // deals and dealChaos are a part of chaos, not an addition to it: a deal is a room,
     // and what it paid is already in the run's haul and in its currency columns. They are
@@ -112,7 +112,7 @@ public class SanctumRunTracker
     // the deal file for it.
     private string WideHeader =>
         "when,run,runId,duration,chaos,deals,dealChaos," +
-        string.Join(",", _currencyColumns.Select(Field)) + ",other";
+        string.Join(",", _currencyColumns.Select(Field));
 
     public RunState Current { get; private set; }
 
@@ -739,12 +739,6 @@ public class SanctumRunTracker
 
         values.AddRange(_currencyColumns.Select(currency =>
             (object)quantities.GetValueOrDefault(currency, 0)));
-
-        var columned = new HashSet<string>(_currencyColumns, StringComparer.OrdinalIgnoreCase);
-        values.Add(string.Join(", ", quantities
-            .Where(x => !columned.Contains(x.Key))
-            .OrderByDescending(x => x.Value)
-            .Select(x => $"{x.Value} {x.Key}")));
 
         return Row(values.ToArray());
     }

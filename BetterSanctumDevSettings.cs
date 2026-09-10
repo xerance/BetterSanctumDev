@@ -62,6 +62,33 @@ public class BetterSanctumDevSettings : ISettings
         "Orbs of Augmentation",
     };
 
+    // The columns of the wide run file, which is for tracking what a run was worth rather
+    // than everything it dropped. Everything here cleared five chaos a unit when the list
+    // was drawn, except Chaos itself, Exalted and Gemcutter's, which are kept by choice.
+    //
+    // A separate list from CurrencyTypes on purpose: that one has to stay complete, since
+    // it is what a price override can be set on. This one is a view, and a short one is
+    // the point of it. Ordered by what a unit was worth when it was written, which is a
+    // snapshot - the order is fixed so the file stays appendable, not because the economy
+    // is. Nothing else is recorded here at all; the whole haul is still in the chaos
+    // column, and every currency of it in sanctum-run-currency.csv.
+    public static readonly IReadOnlyList<string> WideCurrencyColumns = new List<string>
+    {
+        "Mirrors of Kalandra",
+        "Volatile Vaal Orbs",
+        "Fracturing Orbs",
+        "Divine Orbs",
+        "Veiled Chaos Orbs",
+        "Sacred Orbs",
+        "Orbs of Annulment",
+        "Ancient Orbs",
+        "Chromatic Orbs",
+        "Stacked Decks",
+        "Gemcutter's Prisms",
+        "Exalted Orbs",
+        "Chaos Orbs",
+    };
+
     // JsonIgnore matters here: Newtonsoft appends to an existing collection rather than
     // replacing it, so a serialised copy grew by five entries every time settings loaded.
     [JsonIgnore]
