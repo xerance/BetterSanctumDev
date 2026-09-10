@@ -52,7 +52,7 @@ public class SanctumRunTracker
     // Every floor, not floor 3 up, because whether an early deal is worth taking is one of
     // the questions, and a file that had already decided could not answer it.
     private const string DealHeader =
-        "when,runId,floor,layer,room,slot,currency,quantity,chaos,taken,offerText";
+        "when,runId,floor,layer,room,slot,currency,quantity,chaos,taken,offerText,list";
 
     // The run row again, one row per currency instead of three cells of comma-joined text.
     // A spreadsheet cannot pivot or chart "3 Volatile Vaal Orbs, 1 Divine Orbs" - it is one
@@ -62,7 +62,7 @@ public class SanctumRunTracker
     // "seen" for high rewards the floor showed whether or not they were reachable. Summing
     // run and deal together double counts, since deal is part of run.
     private const string CurrencyHeader =
-        "when,runId,source,currency,quantity,unitChaos,totalChaos";
+        "when,runId,source,currency,quantity,unitChaos,totalChaos,list";
 
     // A column per currency: the shape a spreadsheet charts without being reshaped first,
     // where the long file above is the shape it pivots.
@@ -96,31 +96,46 @@ public class SanctumRunTracker
     // columns, and two sets of columns cannot share a file, so each gets its own.
     private readonly Func<string, string> _trackingFile;
 
-    // Outside the profile folders, both of them, and for different reasons.
+    // Outside the profile folders, and for different reasons.
     //
     // An unfinished run belongs to the run rather than to whichever profile was selected
     // when it started.
     //
-    // The deal file is one dataset rather than one per list. Its columns are fixed, so
-    // nothing in it depends on which currencies a list tracks, and the question it exists
-    // to answer - what is a deal actually worth - is answered by volume. Splitting it per
-    // list would divide the only file here that needs all the rows it can get.
+    // The deal and currency files are one dataset rather than one per list. Their columns
+    // are fixed, so unlike the wide file nothing in them depends on which currencies a list
+    // tracks, and what a deal is worth is a question answered by volume. Splitting them per
+    // list would divide the files that need every row they can get.
+    //
+    // Both carry the list that wrote each row instead. They have to: the duplicate-run rule
+    // changes which slot counts as taken, so a row from one list does not mean quite what
+    // the same row from another does, and a shared file that could not say which was which
+    // would be a file you cannot safely average.
     private readonly string _dealPath;
+    private readonly string _currencyPath;
     private readonly string _statePath;
+    private readonly Func<string> _listName;
 
     private DateTime _lastSave = DateTime.MinValue;
 
-    public SanctumRunTracker(Func<string, string> trackingFile, string dealPath, string statePath)
+    public SanctumRunTracker(
+        Func<string, string> trackingFile,
+        string dealPath,
+        string currencyPath,
+        string statePath,
+        Func<string> listName)
     {
         _trackingFile = trackingFile;
         _dealPath = dealPath;
+        _currencyPath = currencyPath;
         _statePath = statePath;
+        _listName = listName;
     }
 
     private string RunPath => _trackingFile("sanctum-runs.csv");
     private string RoomPath => _trackingFile("sanctum-run-rooms.csv");
     private string DealPath => _dealPath;
-    private string CurrencyPath => _trackingFile("sanctum-run-currency.csv");
+    private string CurrencyPath => _currencyPath;
+    private string ListName => _listName?.Invoke() ?? "";
     private string WidePath => _trackingFile("sanctum-run-wide.csv");
 
     public RunState Current { get; private set; }
@@ -668,7 +683,8 @@ public class SanctumRunTracker
                             offer.Currency, offer.Quantity,
                             SlotChaos(slot, unitPrice),
                             best != null && best.Slot == offer.Slot,
-                            offer.Text));
+                            offer.Text,
+                            ListName));
                     }
                 }
 
@@ -864,7 +880,7 @@ public class SanctumRunTracker
     // The same grouping Describe does, emitted as rows instead of a sentence. Quantities
     // are summed per currency so a run contributes one row per currency per source, which
     // is the shape a pivot table wants.
-    private static IEnumerable<string> CurrencyRows(
+    private IEnumerable<string> CurrencyRows(
         string runId,
         string source,
         IEnumerable<SlotObservation> slots,
@@ -884,7 +900,7 @@ public class SanctumRunTracker
             .OrderByDescending(x => x.Unit * x.Quantity)
             .Select(x => Row(
                 runId, source, x.Currency, x.Quantity,
-                Math.Round(x.Unit, 2), Math.Round(x.Unit * x.Quantity, 2)))
+                Math.Round(x.Unit, 2), Math.Round(x.Unit * x.Quantity, 2), ListName))
             .ToList();
     }
 
