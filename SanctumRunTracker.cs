@@ -354,6 +354,16 @@ public class SanctumRunTracker
         return -((slot.Tier + 1) * 1000.0) + slot.Quantity;
     }
 
+    // What a slot is worth for a reader rather than for a comparison. The figure above is
+    // a ranking, and where there is no price it is a sentinel in the thousands - which is
+    // fine for picking the best slot and poison in a column somebody sums. Blank instead,
+    // which a spreadsheet skips rather than averaging in as a value that was measured.
+    private static object SlotChaos(SlotObservation slot, Func<string, double> unitPrice)
+    {
+        var chaos = SlotValue(slot, unitPrice);
+        return chaos > 0 ? Math.Round(chaos, 2) : null;
+    }
+
     // The map's slots where it has them, the reward window's where it does not. A Deal
     // reads its rewards as empty on the map, so without this the one room whose contents
     // only the window can see would contribute nothing to what the run produced.
@@ -572,7 +582,7 @@ public class SanctumRunTracker
                             slot.Currency, slot.Quantity, slot.Tier,
                             room.FightRoomId, room.RewardRoomId, room.Affliction,
                             isEntered, onRoute, assumed != null && assumed.Slot == slot.Slot,
-                            Math.Round(SlotValue(slot, unitPrice), 2), null));
+                            SlotChaos(slot, unitPrice), null));
                     }
 
                     // Window rows sit alongside the map rows rather than replacing them,
@@ -584,12 +594,12 @@ public class SanctumRunTracker
                             offer.Currency, offer.Quantity, offer.Tier,
                             room.FightRoomId, room.RewardRoomId, room.Affliction,
                             isEntered, onRoute, false,
-                            Math.Round(SlotValue(new SlotObservation
+                            SlotChaos(new SlotObservation
                             {
                                 Currency = offer.Currency,
                                 Quantity = offer.Quantity,
                                 Tier = offer.Tier,
-                            }, unitPrice), 2),
+                            }, unitPrice),
                             offer.Text));
                     }
                 }
@@ -632,7 +642,7 @@ public class SanctumRunTracker
                         dealRows.Add(Row(
                             run.RunId, floor.Floor, deal.Layer, deal.Room, offer.Slot,
                             offer.Currency, offer.Quantity,
-                            Math.Round(Math.Max(SlotValue(slot, unitPrice), 0), 2),
+                            SlotChaos(slot, unitPrice),
                             best != null && best.Slot == offer.Slot,
                             offer.Text));
                     }
