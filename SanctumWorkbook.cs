@@ -128,7 +128,7 @@ public static class SanctumWorkbook
             headers.AddRange(currencies.Select(CurrencyNames.ToShort));
 
             var rows = new List<List<string>> { headers };
-            for (var run = 0; run < Math.Max(runs, 1); run++)
+            for (var run = 1; run <= Math.Max(runs, 1); run++)
             {
                 foreach (var source in new[] { "run", "deal" })
                 {
@@ -261,7 +261,7 @@ public static class SanctumWorkbook
             var tinted = row > 0 &&
                          runColumn >= 0 &&
                          int.TryParse(cells[runColumn], out var runNumber) &&
-                         runNumber % 2 == 0;
+                         runNumber % 2 == 1;
 
             xml.Append($"<row r=\"{row + 1}\">");
 
@@ -388,8 +388,7 @@ public static class SanctumWorkbook
         xml.Append("</row>");
 
         // The names here are the headings used over on Runs, because that is what the
-        // total looks them up by. A price of nothing is written rather than left out, so a
-        // currency with no market is visibly worth nothing instead of merely absent.
+        // total looks them up by.
         var line = 8;
         foreach (var (currency, chaos) in prices)
         {

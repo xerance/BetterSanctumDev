@@ -748,8 +748,9 @@ public class SanctumRunTracker
                 WideTrailingHeader + Environment.NewLine);
         }
 
-        // The run's own number, shared by both of its rows so they group together
-        var index = Math.Max(CountRows(WidePath), 0) / 2;
+        // The run's own number, shared by both of its rows so they group together. Counted
+        // from one: nobody calls their first Sanctum of the day the zeroth.
+        var index = Math.Max(CountRows(WidePath), 0) / 2 + 1;
         var date = DateTime.Now.ToString("yyyy-MM-dd");
 
         // The deal row carries no date. It is the same run on the same day, and repeating

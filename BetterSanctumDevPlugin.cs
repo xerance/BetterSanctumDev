@@ -143,12 +143,17 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
 
     private const int TemplateRuns = 20;
 
-    // Every currency, not only the tracked ones: the sheet is a price list, and one that
-    // only held what happens to be tracked today could not total a file written when
-    // something else was.
+    // Every currency that has a price, not only the tracked ones: the sheet is a price
+    // list, and one that only held what happens to be tracked today could not total a file
+    // written when something else was.
+    //
+    // A currency with no price is left off it rather than listed at zero. Zero is what the
+    // total would use either way, and a row saying a currency is worth nothing is a line
+    // to read past on a sheet whose whole job is saying what things are worth.
     private List<(string Currency, double Chaos)> CurrentPrices() =>
         BetterSanctumDevSettings.CurrencyTypes
             .Select(x => (Currency: x, Chaos: Math.Round(UnitPriceForCurrency(x), 2)))
+            .Where(x => x.Chaos > 0)
             .ToList();
 
     private void OpenTrackingFolder()
