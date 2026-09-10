@@ -73,6 +73,7 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
         // and the reason alongside it so it can say what is missing when there is none.
         Settings.DivineChaosProvider = GetDivineChaosRate;
         Settings.DivinePriceStatusProvider = DivinePriceUnavailableReason;
+        Settings.RunTracking.TrackedFloorProvider = TrackedCurrencyFloor;
         _effectHelper = new EffectHelper(GameController, Graphics, Settings);
         _rewardTracker = new RewardTracker(LogFilePath("sanctum-rewards.csv"));
         _probe = new SanctumProbe(LogFilePath("sanctum-probe.txt"));
@@ -898,17 +899,43 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
     private IReadOnlyList<string> ResolveWideColumns()
     {
         var tracking = Settings.RunTracking;
-        var chosen = tracking.OverrideTrackedCurrencies
-            ? BetterSanctumDevSettings.CurrencyTypes
-                .Where(x => tracking.TrackedCurrencies.GetValueOrDefault(x, false))
-            : BetterSanctumDevSettings.CurrencyTypes
-                .Where(x => UnitPriceForCurrency(x) >= tracking.TrackedCurrencyMinChaos.Value)
+        var ticked = BetterSanctumDevSettings.CurrencyTypes
+            .Where(x => tracking.TrackedCurrencies.GetValueOrDefault(x, false));
+
+        IEnumerable<string> chosen;
+        if (tracking.OverrideTrackedCurrencies &&
+            tracking.OverrideMode == RunTrackingSettings.OverrideReplace)
+        {
+            // Replace means the ticked list and nothing else, Chaos Orbs included. Forcing
+            // it back in would make one currency impossible to stop tracking.
+            chosen = ticked;
+        }
+        else
+        {
+            chosen = BetterSanctumDevSettings.CurrencyTypes
+                .Where(x => UnitPriceForCurrency(x) >= TrackedCurrencyFloor())
                 .Append("Chaos Orbs");
+
+            if (tracking.OverrideTrackedCurrencies)
+            {
+                chosen = chosen.Concat(ticked);
+            }
+        }
 
         return chosen
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    // A figure you typed is absolute chaos; unset follows the divine price, so the columns
+    // keep up with the economy rather than with a number somebody set once.
+    private double TrackedCurrencyFloor()
+    {
+        var configured = Settings.RunTracking.TrackedCurrencyMinChaos;
+        return configured >= 0
+            ? configured
+            : DivineChaos() * RunTrackingSettings.DefaultTrackedPercentOfDivine / 100.0;
     }
 
     // The same rule PreventLastOffer draws on screen, so the tracked haul matches what the

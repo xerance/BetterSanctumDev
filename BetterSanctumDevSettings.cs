@@ -14,13 +14,10 @@ namespace BetterSanctumDev;
 
 public class BetterSanctumDevSettings : ISettings
 {
-    // The ones worth reading first, then everything else. This is the column order of the
-    // wide run file, so the left of that sheet is the part worth looking at and the tail
-    // sits off past the fold.
-    //
-    // Ordered by what is worth noticing rather than by price, deliberately: any order that
-    // tracked price would be right for one league only. An exalt led this list once and is
-    // worth under two chaos now, while fracturing orbs outprice a divine.
+    // Every reward category the game has, which is what a price override and a tracking
+    // tick can be set on, so it has to stay complete. The ones worth reading first lead it
+    // and the tail follows, which only affects the order they are listed in the menu - the
+    // wide run file picks its own columns and sorts them by name.
     public static readonly IReadOnlyList<string> CurrencyTypes = new List<string>
     {
         "Mirrors of Kalandra",
@@ -670,40 +667,12 @@ public class BetterSanctumDevSettings : ISettings
                (reason is { Length: > 0 } ? $", because {reason}" : "");
     }
 
-    // Hover marker after the control it explains
-    private static void Hint(string text)
-    {
-        ImGui.SameLine();
-        ImGui.TextDisabled("(?)");
-        if (ImGui.IsItemHovered())
-        {
-            Tooltip(text);
-        }
-    }
+    // Shared with the settings groups below, which draw their own controls
+    private static void Hint(string text) => SettingsHelp.Hint(text);
 
-    // ImGui's text calls take a printf format string, so a literal percent sign in any of
-    // this prose is read as a specifier and swallows what follows it: "10% of a Divine
-    // Orb" printed as "100f a Divine Orb". Affliction descriptions are full of them.
-    // TextUnformatted does no formatting at all, which is what every one of these wants.
-    //
-    // Tooltips are wrapped as well. Unwrapped, a paragraph is laid out as one line and
-    // the tooltip grows wider than the screen.
-    private static void Tooltip(string text)
-    {
-        ImGui.BeginTooltip();
-        ImGui.PushTextWrapPos(ImGui.GetFontSize() * 40f);
-        ImGui.TextUnformatted(text);
-        ImGui.PopTextWrapPos();
-        ImGui.EndTooltip();
-    }
+    private static void Tooltip(string text) => SettingsHelp.Tooltip(text);
 
-    // Same colour as TextDisabled, without the format string
-    private static void DisabledText(string text)
-    {
-        ImGui.PushStyleColor(ImGuiCol.Text, ImGui.GetStyle().Colors[(int)ImGuiCol.TextDisabled]);
-        ImGui.TextUnformatted(text);
-        ImGui.PopStyleColor();
-    }
+    private static void DisabledText(string text) => SettingsHelp.DisabledText(text);
 
     private (string profileName, ProfileContent profile) GetCurrentProfile()
     {
@@ -827,6 +796,41 @@ public class ProfileContent
 // themselves, so this is where the explanation of what a group does has to live.
 public static class SettingsHelp
 {
+    // Hover marker after the control it explains
+    public static void Hint(string text)
+    {
+        ImGui.SameLine();
+        ImGui.TextDisabled("(?)");
+        if (ImGui.IsItemHovered())
+        {
+            Tooltip(text);
+        }
+    }
+
+    // ImGui's text calls take a printf format string, so a literal percent sign in any of
+    // this prose is read as a specifier and swallows what follows it: "10% of a Divine
+    // Orb" printed as "100f a Divine Orb". Affliction descriptions are full of them.
+    // TextUnformatted does no formatting at all, which is what every one of these wants.
+    //
+    // Tooltips are wrapped as well. Unwrapped, a paragraph is laid out as one line and
+    // the tooltip grows wider than the screen.
+    public static void Tooltip(string text)
+    {
+        ImGui.BeginTooltip();
+        ImGui.PushTextWrapPos(ImGui.GetFontSize() * 40f);
+        ImGui.TextUnformatted(text);
+        ImGui.PopTextWrapPos();
+        ImGui.EndTooltip();
+    }
+
+    // Same colour as TextDisabled, without the format string
+    public static void DisabledText(string text)
+    {
+        ImGui.PushStyleColor(ImGuiCol.Text, ImGui.GetStyle().Colors[(int)ImGuiCol.TextDisabled]);
+        ImGui.TextUnformatted(text);
+        ImGui.PopStyleColor();
+    }
+
     public static CustomNode Block(params string[] lines)
     {
         return new CustomNode
@@ -976,17 +980,34 @@ public class RunTrackingSettings
 
     public ToggleNode TrackRuns { get; set; } = new ToggleNode(false);
 
-    // Which currencies get a column in the wide file. By price by default, so the sheet
-    // follows the economy instead of a list written once and left to rot - an exalt led
-    // the sheet this was modelled on and is worth under two chaos now.
-    public RangeNode<int> TrackedCurrencyMinChaos { get; set; } = new RangeNode<int>(5, 0, 1000);
+    // A share of a divine rather than a chaos figure, so the columns keep up with the
+    // economy instead of a list written once and left to rot - an exalt led the sheet this
+    // was modelled on and is worth under two chaos now. -1 follows it; anything else is
+    // that many chaos, flat.
+    public const double DefaultTrackedPercentOfDivine = 1.5;
 
-    // Ticked by hand instead, for a currency you want tracked whatever it is worth, or one
-    // you do not want tracked whatever it is worth.
+    public int TrackedCurrencyMinChaos { get; set; } = -1;
+
+    // Ticked by hand as well as by price, or instead of it.
     public ToggleNode OverrideTrackedCurrencies { get; set; } = new ToggleNode(false);
+
+    public const int OverrideInclude = 0;
+    public const int OverrideReplace = 1;
+
+    public static readonly string[] OverrideModeNames =
+    {
+        "Include - tracked as well as anything over the threshold",
+        "Replace - track only what is ticked",
+    };
+
+    public int OverrideMode { get; set; } = OverrideInclude;
 
     [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
     public Dictionary<string, bool> TrackedCurrencies { get; set; } = new Dictionary<string, bool>();
+
+    // Set by the plugin so the threshold hint can say what the share comes to in chaos
+    [JsonIgnore]
+    public Func<double> TrackedFloorProvider { get; set; }
 
     [JsonIgnore]
     public CustomNode TrackedCurrencyNode { get; set; }
@@ -998,10 +1019,35 @@ public class RunTrackingSettings
         {
             DrawDelegate = () =>
             {
+                var threshold = TrackedCurrencyMinChaos;
+                if (ImGui.InputInt("Track currencies worth at least (chaos) override", ref threshold))
+                {
+                    TrackedCurrencyMinChaos = threshold < 0 ? -1 : threshold;
+                }
+
+                var floor = TrackedFloorProvider?.Invoke() ?? 0;
+                SettingsHelp.Hint("A currency worth at least this much a unit gets a column in the wide run file." +
+                     $"\n\n-1 uses the default, which is {DefaultTrackedPercentOfDivine}% of a Divine Orb" +
+                     (floor > 0 ? $", about {floor:0.#}c right now" : "") + "." +
+                     " Being a share of a divine it moves as the economy does." +
+                     "\n0 tracks everything." +
+                     "\n\nAnything else is that many chaos, flat." +
+                     "\n\nChaos Orbs always has a column whatever the threshold, being the unit the rest are counted in." +
+                     "\n\nA wide file keeps the columns it was started with, so a change here only takes effect in a new one.");
+
                 if (!OverrideTrackedCurrencies)
                 {
                     return;
                 }
+
+                var mode = OverrideMode;
+                if (ImGui.Combo("Ticked currencies", ref mode, OverrideModeNames, OverrideModeNames.Length))
+                {
+                    OverrideMode = mode;
+                }
+
+                SettingsHelp.Hint("Include keeps the threshold and adds what is ticked, for something worth following whatever it prices at." +
+                     "\nReplace ignores the threshold entirely and tracks the ticked list alone - including dropping Chaos Orbs, if it is not ticked.");
 
                 ImGui.InputTextWithHint("##TrackedCurrencyFilter", "Filter", ref filter, 100);
                 foreach (var type in BetterSanctumDevSettings.CurrencyTypes)
