@@ -401,7 +401,85 @@ public static class SanctumWorkbook
         }
 
         xml.Append(Footer(rows.Count, headers, currencyIndexes, totalColumn, runColumn, sourceColumn, durationColumn));
+        xml.Append(Normalised(rows.Count, headers, currencyIndexes, totalColumn, runColumn, sourceColumn, durationColumn));
         xml.Append("</sheetData></worksheet>");
+        return xml.ToString();
+    }
+
+    // What a slower build would make an hour: the same haul, as if every run took the same
+    // number of minutes.
+    //
+    // Recorded durations say how fast these particular runs went, interruptions and all - a
+    // trade in the middle of one counts as run time. A fixed time per run gives a rate that
+    // compares across sessions and builds instead. Twenty minutes is slower than a run
+    // usually takes, on purpose: it is a figure to plan around rather than a best case.
+    //
+    // The minutes sit in a cell of their own and everything in the row reads them, so the
+    // assumption can be changed in the sheet without exporting again.
+    private const int NormalisedRunMinutes = 20;
+
+    private static string Normalised(
+        int dataRows,
+        List<string> headers,
+        List<int> currencyIndexes,
+        int totalColumn,
+        int runColumn,
+        int sourceColumn,
+        int durationColumn)
+    {
+        var dateColumn = headers.FindIndex(x => string.Equals(x, "date", StringComparison.OrdinalIgnoreCase));
+        if (dataRows < 2 || currencyIndexes.Count == 0 ||
+            dateColumn < 0 || runColumn < 0 || sourceColumn < 0 || durationColumn < 0)
+        {
+            return "";
+        }
+
+        var footer = dataRows + 1;
+        var line = dataRows + 2;
+        var minutes = ColumnName(dateColumn + FirstDataColumn) + line;
+        var runs = ColumnName(runColumn + FirstDataColumn) + line;
+        var duration = ColumnName(durationColumn + FirstDataColumn) + line;
+
+        var xml = new StringBuilder();
+        xml.Append($"<row r=\"{line}\">");
+        xml.Append(TextCell($"A{line}", "NORMALISED", StyleFooter));
+
+        for (var column = 0; column < headers.Count; column++)
+        {
+            var reference = ColumnName(column + FirstDataColumn) + line;
+
+            if (column == dateColumn)
+            {
+                xml.Append($"<c r=\"{reference}\" s=\"{StyleFooter}\"><v>{NormalisedRunMinutes}</v></c>");
+            }
+            else if (column == runColumn)
+            {
+                xml.Append($"<c r=\"{reference}\" s=\"{StyleFooter}\"><f>{ColumnName(column + FirstDataColumn)}{footer}</f></c>");
+            }
+            else if (column == sourceColumn)
+            {
+                xml.Append(TextCell(reference, "min per run", StyleFooter));
+            }
+            else if (column == durationColumn)
+            {
+                xml.Append($"<c r=\"{reference}\" s=\"{StyleFooterDuration}\"><f>{runs}*{minutes}/1440</f></c>");
+            }
+            else
+            {
+                xml.Append($"<c r=\"{reference}\" s=\"{StyleFooter}\"/>");
+            }
+        }
+
+        // The haul is the same as the total's, so it is read from there rather than summed
+        // again; only the time it is divided by differs.
+        var chaos = ColumnName(totalColumn);
+        var divine = ColumnName(totalColumn + 1);
+        xml.Append($"<c r=\"{chaos}{line}\" s=\"{StyleFooterValue}\"><f>{chaos}{footer}</f></c>");
+        xml.Append($"<c r=\"{divine}{line}\" s=\"{StyleFooterValue}\"><f>{divine}{footer}</f></c>");
+        xml.Append($"<c r=\"{ColumnName(totalColumn + 2)}{line}\" s=\"{StyleFooterValue}\">" +
+                   $"<f>IFERROR({divine}{line}/({duration}*24),&quot;&quot;)</f></c>");
+
+        xml.Append("</row>");
         return xml.ToString();
     }
 
