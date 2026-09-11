@@ -209,6 +209,7 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
         note = null;
         problem = null;
 
+        EnsureRewardTableLoaded();
         var live = CurrentPrices();
         if (live.Any(x => x.Chaos > 0))
         {
@@ -246,12 +247,20 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
             return "nothing is answering the NinjaPrice.GetBaseItemTypeValue bridge";
         }
 
-        if (RemoteMemoryObject.pTheGame?.Files?.SanctumDeferredRewardCategories?.EntriesList == null)
+        // Empty as well as absent. Outside the floor map the table is usually there but
+        // holds nothing, and testing for absence alone blamed the price plugin for it.
+        var categories = RemoteMemoryObject.pTheGame?.Files?.SanctumDeferredRewardCategories?.EntriesList;
+        if (categories is not { Count: > 0 })
         {
-            return "the game's reward table is not loaded, which it is not until you are logged in";
+            return "the game's reward table is not loaded - log in, or open the Sanctum floor map once";
         }
 
-        return "the price plugin answered but priced nothing - it is most likely still loading its prices after launch";
+        if (!categories.Any(x => x?.BaseType != null))
+        {
+            return $"the game's reward table has {categories.Count} entries but none of them resolve to an item yet";
+        }
+
+        return $"the price plugin answered but priced nothing from {categories.Count} reward entries";
     }
 
     private sealed class PriceSnapshot
@@ -318,6 +327,7 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
     // export pressed next would find.
     private void ReloadPrices()
     {
+        EnsureRewardTableLoaded(force: true);
         _priceByCurrency.Clear();
         _sincePriceCacheStopwatch.Restart();
         _divineChaosRate = 0;
@@ -325,6 +335,40 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
 
         TryResolveExportPrices(out _, out _, out _, out _, out _);
         LogMessage($"[BetterSanctumDev] {_priceStatus ?? "prices reloaded"}", 10);
+    }
+
+    // The game's files are only loaded from the floor map's render path, so away from it -
+    // after a fresh launch in particular, before the map has ever been opened - the reward
+    // table sits empty and every price looked up through it comes back as nothing.
+    // Hovering an item still prices, because the price plugin reads the item itself rather
+    // than this table, which is what made it look like the price plugin's fault.
+    //
+    // Loaded here as well, for the export and the reload, which run away from the map.
+    // Throttled on the same stopwatch as the map's own reload, since loading the files is
+    // not free; a reload asked for by hand goes straight through.
+    private void EnsureRewardTableLoaded(bool force = false)
+    {
+        var categories = RemoteMemoryObject.pTheGame?.Files?.SanctumDeferredRewardCategories?.EntriesList;
+        if (categories is { Count: > 0 } && categories.Any(x => x?.BaseType != null))
+        {
+            return;
+        }
+
+        if (!force && _sinceLastReloadStopwatch.Elapsed < TimeSpan.FromSeconds(5))
+        {
+            return;
+        }
+
+        try
+        {
+            GameController.Files.LoadFiles();
+        }
+        catch (Exception)
+        {
+            // Usually not being logged in, which the status line says once the prices are read
+        }
+
+        _sinceLastReloadStopwatch.Restart();
     }
 
     private void OpenTrackingFolder()
@@ -465,7 +509,7 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
             return "nothing is answering the NinjaPrice.GetBaseItemTypeValue bridge";
         }
 
-        if (RemoteMemoryObject.pTheGame?.Files?.SanctumDeferredRewardCategories?.EntriesList == null)
+        if (RemoteMemoryObject.pTheGame?.Files?.SanctumDeferredRewardCategories?.EntriesList is not { Count: > 0 })
         {
             return "the game's Sanctum reward table has not loaded yet";
         }
