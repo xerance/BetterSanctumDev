@@ -411,6 +411,17 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
             () => Settings.RunTracking.CurrentProfile);
         // Picks a run back up after a HUD restart part way through one
         _runTracker.Load();
+
+        // A build that hides the tracking section also switches it off. Hiding alone would
+        // leave it running for anyone whose settings file turned it on while it could still
+        // be seen, with no menu left to turn it off from.
+        if (typeof(BetterSanctumDevSettings).GetProperty(nameof(BetterSanctumDevSettings.RunTracking))?
+                .IsDefined(typeof(ExileCore.Shared.Attributes.IgnoreMenuAttribute), false) == true)
+        {
+            Settings.RunTracking.TrackRuns.Value = false;
+            Settings.RunTracking.TrackRewards.Value = false;
+        }
+
         return base.Initialise();
     }
 
@@ -424,9 +435,16 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
             _probe.LogAreaChange(area, GameController?.IngameState?.IngameUi?.SanctumFloorWindow);
         }
 
-        if (Settings.RunTracking.TrackRuns && IsForbiddenSanctumHub(area?.Area?.Id))
+        var areaId = area?.Area?.Id;
+        if (Settings.RunTracking.TrackRuns && IsForbiddenSanctumHub(areaId))
         {
             _runTracker.NoteHubVisit();
+        }
+        // A pause is for stepping out between floors. Walking back into the Sanctum ends
+        // it, so one forgotten pause cannot take the rest of the run off the clock.
+        else if (Settings.RunTracking.TrackRuns && areaId?.StartsWith("Sanctum", StringComparison.Ordinal) == true)
+        {
+            _runTracker.Resume();
         }
 
         base.AreaChange(area);
@@ -1368,7 +1386,17 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
         {
             var run = _runTracker.Current;
             ImGui.TextUnformatted($"Run {run.RunId}");
-            ImGui.TextUnformatted($"Started {run.Started:HH:mm:ss}, {(DateTime.Now - run.Started).TotalMinutes:0} min");
+            ImGui.TextUnformatted($"Started {run.Started:HH:mm:ss}, {run.Elapsed().TotalMinutes:0} min");
+            var pausedFor = run.Paused + (run.PausedAt is { } pausedAt ? DateTime.Now - pausedAt : TimeSpan.Zero);
+            if (run.PausedAt != null)
+            {
+                ImGui.TextUnformatted($"Paused, {pausedFor.TotalMinutes:0} min - resumes when you enter the Sanctum");
+            }
+            else if (pausedFor > TimeSpan.Zero)
+            {
+                ImGui.TextUnformatted($"Paused {pausedFor.TotalMinutes:0} min in total, not counted");
+            }
+
             ImGui.TextUnformatted($"Floors seen: {string.Join(", ", run.Floors.Keys.OrderBy(x => x))}");
             ImGui.TextUnformatted($"Rooms recorded: {run.Floors.Values.Sum(x => x.Rooms.Count)}");
             ImGui.TextUnformatted($"Hub visits: {run.HubVisits}");
@@ -1387,6 +1415,19 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
                 else
                 {
                     LogMessage($"[BetterSanctum] wrote {floors} floor rows to sanctum-runs.csv", 30);
+                }
+            }
+
+            ImGui.SameLine();
+            if (ImGui.Button(_runTracker.IsPaused ? "Resume" : "Pause"))
+            {
+                if (_runTracker.IsPaused)
+                {
+                    _runTracker.Resume();
+                }
+                else
+                {
+                    _runTracker.Pause();
                 }
             }
 
@@ -1533,6 +1574,8 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
         // garbage in the hub - so a read taken with the map shut is not worth merging.
         if (Settings.RunTracking.TrackRuns && _runTracker.IsRunning)
         {
+            // A floor map open means you are back on a floor, whatever the area was called
+            _runTracker.Resume();
             _runTracker.Merge(CaptureFloor(floorWindow, roomsByLayer));
         }
 

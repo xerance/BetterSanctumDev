@@ -105,6 +105,21 @@ public class RunState
     // once per floor, so the informative number is what this exceeds that baseline by.
     public int HubVisits { get; set; }
 
+    // Time spent paused - a trade in the middle of a run, say - which the run's duration
+    // leaves out. PausedAt is a pause still going; Paused is every pause already over.
+    // Both are saved, so a pause survives a HUD restart like the rest of the run.
+    public DateTime? PausedAt { get; set; }
+    public TimeSpan Paused { get; set; }
+
+    // Running time up to a moment, with every pause taken out, including one still open
+    public TimeSpan Elapsed(DateTime? until = null)
+    {
+        var end = until ?? DateTime.Now;
+        var paused = Paused + (PausedAt is { } since && end > since ? end - since : TimeSpan.Zero);
+        var elapsed = end - Started - paused;
+        return elapsed < TimeSpan.Zero ? TimeSpan.Zero : elapsed;
+    }
+
     public Dictionary<int, FloorObservation> Floors { get; set; } = new Dictionary<int, FloorObservation>();
 
     public FloorObservation Floor(int floor, string prefix)

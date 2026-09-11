@@ -161,6 +161,32 @@ public class SanctumRunTracker
         TryDelete(_statePath);
     }
 
+    public bool IsPaused => IsRunning && Current.PausedAt != null;
+
+    public void Pause()
+    {
+        if (!IsRunning || Current.PausedAt != null)
+        {
+            return;
+        }
+
+        Current.PausedAt = DateTime.Now;
+        Save(force: true);
+    }
+
+    // Safe to call every frame: it does nothing unless a pause is open
+    public void Resume()
+    {
+        if (!IsPaused)
+        {
+            return;
+        }
+
+        Current.Paused += DateTime.Now - Current.PausedAt.Value;
+        Current.PausedAt = null;
+        Save(force: true);
+    }
+
     // Counted on entering the hub rather than on leaving a floor: leaving can happen by
     // dying, by finishing, or by portalling out, and only one of those is distinguishable
     // from the area you land in.
@@ -703,7 +729,7 @@ public class SanctumRunTracker
             var mirrorFloor = afflictionFloors.GetValueOrDefault(DeceptiveMirror, 0);
             runRows.Add(Row(
                 run.RunId,
-                DescribeDuration(run.Ended - run.Started),
+                DescribeDuration(run.Elapsed(run.Ended)),
                 DescribeHaul(runTakes, unitPrice),
                 // Already cut at a divine by band, so nothing further is filtered out
                 dealsEntered, DescribeHaul(dealTakes, unitPrice),
@@ -782,7 +808,7 @@ public class SanctumRunTracker
         // it reads as a second run at a glance. The run number ties the two together.
         var rows = new List<string>
         {
-            WideRow(columns, date, index, "run", DescribeDuration(run.Ended - run.Started), takes, run.RunId),
+            WideRow(columns, date, index, "run", DescribeDuration(run.Elapsed(run.Ended)), takes, run.RunId),
             WideRow(columns, null, index, "deal", null, dealTakes, run.RunId),
         };
 

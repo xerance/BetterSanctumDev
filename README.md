@@ -154,6 +154,10 @@ you took the most valuable slot in each - an estimate, and an optimistic one, so
 completed is recorded beside it. In-progress state is saved to disk, so restarting the HUD
 part way through a run does not lose it.
 
+**Pause** in the hub window stops the clock while you step out mid-run - to trade, say -
+and the paused time is left out of the run's duration. Entering the Sanctum again resumes
+it, so a forgotten pause cannot swallow the rest of the run.
+
 ## Other features
 
 - In-room overlay marking Sanctum spawners and hazard telegraphs
