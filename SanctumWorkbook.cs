@@ -286,14 +286,14 @@ public static class SanctumWorkbook
 
             // Room for what the rows under the runs show in these two, which is wider than
             // the run numbers and run/deal markers above them, in bold: "100 runs" and
-            // "20 min/run"
+            // "20 min per run"
             if (string.Equals(headers[column], "run", StringComparison.OrdinalIgnoreCase))
             {
                 width = Math.Max(width, 10);
             }
             else if (string.Equals(headers[column], "source", StringComparison.OrdinalIgnoreCase))
             {
-                width = Math.Max(width, 13);
+                width = Math.Max(width, 17);
             }
             xml.Append($"<col min=\"{column + FirstDataColumn}\" max=\"{column + FirstDataColumn}\" width=\"{width}\" customWidth=\"1\"/>");
         }
@@ -467,7 +467,7 @@ public static class SanctumWorkbook
             }
             else if (column == sourceColumn)
             {
-                // The minutes, beside the run count and reading "20 min/run" through the
+                // The minutes, beside the run count and reading "20 min per run" through the
                 // cell's format, so the unit is attached to the number it belongs to
                 xml.Append($"<c r=\"{reference}\" s=\"{StyleFooterMinutes}\"><v>{NormalisedRunMinutes}</v></c>");
             }
@@ -769,10 +769,10 @@ public static class SanctumWorkbook
         $"<styleSheet xmlns=\"{Main}\">" +
         "<numFmts count=\"4\">" +
         // The unit carried by the number's own format, so a count reads as "7 runs" and the
-        // minutes as "20 min/run" while both stay numbers a formula can use - a label in the
+        // minutes as "20 min per run" while both stay numbers a formula can use - a label in the
         // cell beside a number reads as belonging to whichever number it happens to follow.
         "<numFmt numFmtId=\"166\" formatCode=\"[=1]0&quot; run&quot;;0&quot; runs&quot;\"/>" +
-        "<numFmt numFmtId=\"167\" formatCode=\"0&quot; min/run&quot;\"/>" +
+        "<numFmt numFmtId=\"167\" formatCode=\"0&quot; min per run&quot;\"/>" +
         "<numFmt numFmtId=\"164\" formatCode=\"yyyy\\-mm\\-dd\"/>" +
         // Square brackets on the hours so a total past twenty-four does not wrap round to
         // nothing, which is what a plain h:mm:ss would do to a session of any length.
