@@ -95,28 +95,24 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
     // there is nothing in a workbook to join to.
     private void ExportTrackingWorkbook()
     {
+        if (!TryResolveExportPrices(out var prices, out var pulled, out var league, out var note, out var problem))
+        {
+            LogError($"[BetterSanctumDev] did not export the workbook: there are no prices to total it with, because {problem}. " +
+                     "The previous workbook was left as it was. Try again once the price plugin has loaded, or after ending a run.", 30);
+            return;
+        }
+
         var written = SanctumWorkbook.Write(
             TrackingFilePath("sanctum-run-wide.csv"),
             TrackingFilePath("sanctum-run-wide.xlsx"),
             new HashSet<string> { "runId" },
-            GameController?.IngameState?.ServerData?.League,
-            CurrentPrices(),
+            league,
+            prices,
+            pulled,
+            note,
             out var error);
 
-        if (written < 0)
-        {
-            LogError($"[BetterSanctumDev] could not export the workbook: {error}", 30);
-            return;
-        }
-
-        // Written, but with something in it worth knowing about
-        if (error is { Length: > 0 })
-        {
-            LogError($"[BetterSanctumDev] exported {written} rows, but {error}", 30);
-            return;
-        }
-
-        LogMessage($"[BetterSanctumDev] exported {written} rows to sanctum-run-wide.xlsx", 30);
+        ReportExport("sanctum-run-wide.xlsx", written, error, note != null ? problem : null);
     }
 
     // The same workbook with no runs in it, for recording by hand. The columns are the ones
@@ -124,24 +120,58 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
     // itself without the HUD ever having written a row.
     private void ExportTrackingTemplate()
     {
+        if (!TryResolveExportPrices(out var prices, out var pulled, out var league, out var note, out var problem))
+        {
+            LogError($"[BetterSanctumDev] did not write the template: there are no prices to put on it, because {problem}. " +
+                     "Try again once the price plugin has loaded, or after ending a run.", 30);
+            return;
+        }
+
         var written = SanctumWorkbook.WriteTemplate(
             TrackingFilePath("sanctum-run-template.xlsx"),
             ResolveWideColumns(),
             TemplateRuns,
-            GameController?.IngameState?.ServerData?.League,
-            CurrentPrices(),
+            league,
+            prices,
+            pulled,
+            note,
             out var error);
 
-        if (written < 0)
-        {
-            LogError($"[BetterSanctumDev] could not write the template: {error}", 30);
-            return;
-        }
-
-        LogMessage($"[BetterSanctumDev] wrote a blank template for {TemplateRuns} runs to sanctum-run-template.xlsx", 30);
+        ReportExport("sanctum-run-template.xlsx", written, error, note != null ? problem : null);
     }
 
     private const int TemplateRuns = 20;
+
+    // Written or not, and anything about it worth knowing. A snapshot standing in for live
+    // prices is said out loud, since a workbook priced from yesterday looks exactly like one
+    // priced today.
+    private void ReportExport(string file, int written, string error, string snapshotBecause)
+    {
+        if (written < 0)
+        {
+            LogError($"[BetterSanctumDev] could not write {file}: {error}", 30);
+            return;
+        }
+
+        var caveats = new List<string>();
+        if (snapshotBecause != null)
+        {
+            caveats.Add($"live prices were not available ({snapshotBecause}), so it is priced from the last saved snapshot");
+        }
+
+        if (error is { Length: > 0 })
+        {
+            caveats.Add(error);
+        }
+
+        if (caveats.Count > 0)
+        {
+            LogError($"[BetterSanctumDev] wrote {file}, but {string.Join("; and ", caveats)}", 30);
+            return;
+        }
+
+        LogMessage($"[BetterSanctumDev] wrote {file}", 30);
+    }
 
     // Every currency that has a price, not only the tracked ones: the sheet is a price
     // list, and one that only held what happens to be tracked today could not total a file
@@ -154,6 +184,120 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
         BetterSanctumDevSettings.CurrencyTypes
             .Select(x => (Currency: x, Chaos: Math.Round(UnitPriceForCurrency(x), 2)))
             .ToList();
+
+    // Prices for an export, live where they can be had and from the last snapshot where
+    // they cannot.
+    //
+    // The export button can be pressed at moments the prices are not there: at character
+    // select, where the game's reward table is not loaded, or in the minute after launch
+    // while the price plugin is still reading its data. Trusting whatever came back then
+    // wrote a workbook of zeros - every total blank - and replaced a good one to do it.
+    // The end of a run is a moment they always are there, so that is when a snapshot is
+    // saved, and an export that finds none live uses it and says so.
+    private bool TryResolveExportPrices(
+        out List<(string Currency, double Chaos)> prices,
+        out DateTime pulled,
+        out string league,
+        out string note,
+        out string problem)
+    {
+        league = GameController?.IngameState?.ServerData?.League;
+        note = null;
+        problem = null;
+
+        var live = CurrentPrices();
+        if (live.Any(x => x.Chaos > 0))
+        {
+            SavePriceSnapshot(live);
+            prices = live;
+            pulled = DateTime.Now;
+            return true;
+        }
+
+        problem = PriceUnavailableReason();
+        var snapshot = LoadPriceSnapshot();
+        if (snapshot?.Prices != null && snapshot.Prices.Values.Any(x => x > 0))
+        {
+            prices = BetterSanctumDevSettings.CurrencyTypes
+                .Select(x => (Currency: x, Chaos: snapshot.Prices.GetValueOrDefault(x, 0)))
+                .ToList();
+            pulled = snapshot.PulledAt;
+            league = string.IsNullOrEmpty(league) ? snapshot.League : league;
+            note = $"Priced from a snapshot saved {snapshot.PulledAt:yyyy-MM-dd HH:mm} - live prices were not available when this was exported.";
+            return true;
+        }
+
+        prices = null;
+        pulled = default;
+        return false;
+    }
+
+    // Why nothing priced at all, in the order the causes can be told apart
+    private string PriceUnavailableReason()
+    {
+        if (ResolvePriceLookup() == null)
+        {
+            return "nothing is answering the NinjaPrice.GetBaseItemTypeValue bridge";
+        }
+
+        if (RemoteMemoryObject.pTheGame?.Files?.SanctumDeferredRewardCategories?.EntriesList == null)
+        {
+            return "the game's reward table is not loaded, which it is not until you are logged in";
+        }
+
+        return "the price plugin answered but priced nothing - it is most likely still loading its prices after launch";
+    }
+
+    private sealed class PriceSnapshot
+    {
+        public DateTime PulledAt { get; set; }
+        public string League { get; set; }
+        public Dictionary<string, double> Prices { get; set; } = new();
+    }
+
+    // Beside the tracking lists rather than in one: prices are the economy's, not a list's
+    private static string PriceSnapshotPath => LogFilePath("price-snapshot.json");
+
+    // Only a set with something priced in it is kept, so a moment with no prices can never
+    // overwrite the last one that had them.
+    private void SavePriceSnapshot(List<(string Currency, double Chaos)> prices)
+    {
+        if (prices == null || !prices.Any(x => x.Chaos > 0))
+        {
+            return;
+        }
+
+        try
+        {
+            var snapshot = new PriceSnapshot
+            {
+                PulledAt = DateTime.Now,
+                League = GameController?.IngameState?.ServerData?.League ?? LoadPriceSnapshot()?.League,
+                Prices = prices.ToDictionary(x => x.Currency, x => x.Chaos),
+            };
+
+            File.WriteAllText(PriceSnapshotPath,
+                Newtonsoft.Json.JsonConvert.SerializeObject(snapshot, Newtonsoft.Json.Formatting.Indented));
+        }
+        catch (Exception)
+        {
+            // A snapshot is a fallback. Failing to write one is not worth interrupting a run
+        }
+    }
+
+    private static PriceSnapshot LoadPriceSnapshot()
+    {
+        try
+        {
+            return File.Exists(PriceSnapshotPath)
+                ? Newtonsoft.Json.JsonConvert.DeserializeObject<PriceSnapshot>(File.ReadAllText(PriceSnapshotPath))
+                : null;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
 
     private void OpenTrackingFolder()
     {
@@ -1095,6 +1239,10 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
 
             if (ImGui.Button("End Run (write CSV)"))
             {
+                // Prices are always live at the end of a run, which is not true of every
+                // moment the export button can be pressed - so they are kept from here for
+                // an export to fall back on.
+                SavePriceSnapshot(CurrentPrices());
                 var floors = _runTracker.EndRun(ResolveUnitPriceByName(), ResolveTakeableSlotRule(), ResolveWideColumns());
                 if (floors < 0)
                 {

@@ -100,6 +100,8 @@ public static class SanctumWorkbook
         ISet<string> skipColumns,
         string league,
         IReadOnlyList<(string Currency, double Chaos)> prices,
+        DateTime pricesPulled,
+        string priceNote,
         out string error)
     {
         error = null;
@@ -130,7 +132,7 @@ public static class SanctumWorkbook
                 .Select(x => x.index)
                 .ToList();
 
-            return Emit(rows, keep, xlsxPath, league, prices, ref error);
+            return Emit(rows, keep, xlsxPath, league, prices, pricesPulled, priceNote, ref error);
         }
         catch (Exception e)
         {
@@ -151,6 +153,8 @@ public static class SanctumWorkbook
         int runs,
         string league,
         IReadOnlyList<(string Currency, double Chaos)> prices,
+        DateTime pricesPulled,
+        string priceNote,
         out string error)
     {
         error = null;
@@ -171,7 +175,7 @@ public static class SanctumWorkbook
             }
 
             var keep = Enumerable.Range(0, headers.Count).ToList();
-            return Emit(rows, keep, xlsxPath, league, prices, ref error);
+            return Emit(rows, keep, xlsxPath, league, prices, pricesPulled, priceNote, ref error);
         }
         catch (Exception e)
         {
@@ -186,12 +190,14 @@ public static class SanctumWorkbook
         string xlsxPath,
         string league,
         IReadOnlyList<(string Currency, double Chaos)> prices,
+        DateTime pricesPulled,
+        string priceNote,
         ref string error)
     {
         {
             prices ??= new List<(string, double)>();
             var runs = BuildRuns(rows, keep, league);
-            var priceSheet = BuildPrices(prices);
+            var priceSheet = BuildPrices(prices, pricesPulled, priceNote);
 
             // A heading with no row on Prices totals as nothing, and does it quietly - the
             // SUMIF simply matches no row. That happens when a file was written under a
@@ -507,7 +513,10 @@ public static class SanctumWorkbook
         return $"SUMPRODUCT(${first}{line}:${last}{line},SUMIF(Prices!$B:$B,${first}$1:${last}$1,Prices!$C:$C))";
     }
 
-    private static string BuildPrices(IReadOnlyList<(string Currency, double Chaos)> prices)
+    private static string BuildPrices(
+        IReadOnlyList<(string Currency, double Chaos)> prices,
+        DateTime pricesPulled,
+        string priceNote)
     {
         var xml = new StringBuilder();
         xml.Append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>");
@@ -522,9 +531,20 @@ public static class SanctumWorkbook
         xml.Append(TextCell("A3", "Currency pull date", StyleHeader));
         xml.Append("</row>");
 
+        // When the prices were actually read, which is not always when the workbook was
+        // built - an export that falls back on a saved snapshot is priced from then.
         xml.Append("<row r=\"4\">");
-        xml.Append($"<c r=\"A4\" s=\"{StyleDate}\"><v>{Number((DateTime.Now.Date - ExcelEpoch).TotalDays)}</v></c>");
+        xml.Append($"<c r=\"A4\" s=\"{StyleDate}\"><v>{Number((pricesPulled.Date - ExcelEpoch).TotalDays)}</v></c>");
         xml.Append("</row>");
+
+        // Said on the sheet as well as in the log, since the sheet is what gets kept: a
+        // workbook priced from an older snapshot should not pass for one priced today.
+        if (!string.IsNullOrEmpty(priceNote))
+        {
+            xml.Append("<row r=\"5\">");
+            xml.Append(TextCell("A5", priceNote, StyleDefault));
+            xml.Append("</row>");
+        }
 
         xml.Append("<row r=\"7\">");
         xml.Append(TextCell("B7", "currency", StyleHeader));
