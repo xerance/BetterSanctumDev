@@ -247,20 +247,21 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
             return "nothing is answering the NinjaPrice.GetBaseItemTypeValue bridge";
         }
 
-        // Empty as well as absent. Outside the floor map the table is usually there but
-        // holds nothing, and testing for absence alone blamed the price plugin for it.
-        var categories = RemoteMemoryObject.pTheGame?.Files?.SanctumDeferredRewardCategories?.EntriesList;
-        if (categories is not { Count: > 0 })
+        // Counted along both ways a currency can be found, so the line says which one failed
+        // rather than guessing - the last two versions of this guessed, and were wrong.
+        var tableCount = RemoteMemoryObject.pTheGame?.Files?.SanctumDeferredRewardCategories?.EntriesList?.Count ?? 0;
+        var itemCount = RemoteMemoryObject.pTheGame?.Files?.BaseItemTypes?.Contents?.Count ?? 0;
+        var found = BetterSanctumDevSettings.CurrencyTypes.Count(x => FindCategoryBaseType(x) != null);
+
+        if (found == 0)
         {
-            return "the game's reward table is not loaded - log in, or open the Sanctum floor map once";
+            return tableCount == 0 && itemCount == 0
+                ? "neither the reward table nor the game's item list is loaded - are you logged in?"
+                : $"no currency matched an item ({tableCount} reward entries, {itemCount} item types)";
         }
 
-        if (!categories.Any(x => x?.BaseType != null))
-        {
-            return $"the game's reward table has {categories.Count} entries but none of them resolve to an item yet";
-        }
-
-        return $"the price plugin answered but priced nothing from {categories.Count} reward entries";
+        return $"the price plugin answered but priced nothing, with {found} of {BetterSanctumDevSettings.CurrencyTypes.Count} currencies found " +
+               $"({tableCount} reward entries, {itemCount} item types)";
     }
 
     private sealed class PriceSnapshot
@@ -509,14 +510,11 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
             return "nothing is answering the NinjaPrice.GetBaseItemTypeValue bridge";
         }
 
-        if (RemoteMemoryObject.pTheGame?.Files?.SanctumDeferredRewardCategories?.EntriesList is not { Count: > 0 })
-        {
-            return "the game's Sanctum reward table has not loaded yet";
-        }
-
+        // No test of the reward table on its own: a Divine Orb is found through the item list
+        // when the table is empty, so an empty table is no longer a reason on its own.
         if (FindDivineBaseType() == null)
         {
-            return "the Sanctum reward table has no Divine Orbs entry to price";
+            return "no Divine Orb was found in the reward table or the game's item list";
         }
 
         return GetDivineChaosRate() > 0
@@ -628,23 +626,86 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
         }
     }
 
+    // By the reward table where it is loaded, which is the name the game reports a reward
+    // under, and by the game's item list where it is not.
+    //
+    // The reward table is only loaded around the Sanctum floor map. Anywhere else - and
+    // after a fresh launch before the map has been opened - it is empty, even with the
+    // game's files forced to load, and pricing only through it priced every currency at
+    // nothing: the export wrote zeros and the reload button found nothing. The item list is
+    // what every item in the game resolves against, so it is there wherever you are.
     private static BaseItemType FindCategoryBaseType(string currencyName)
     {
-        var categories = RemoteMemoryObject.pTheGame?.Files?.SanctumDeferredRewardCategories?.EntriesList;
-        if (categories == null || string.IsNullOrEmpty(currencyName))
+        if (string.IsNullOrEmpty(currencyName))
         {
             return null;
         }
 
-        foreach (var category in categories)
+        var categories = RemoteMemoryObject.pTheGame?.Files?.SanctumDeferredRewardCategories?.EntriesList;
+        if (categories != null)
         {
-            if (category?.BaseType != null && category.CurrencyName == currencyName)
+            foreach (var category in categories)
             {
-                return category.BaseType;
+                if (category?.BaseType != null && category.CurrencyName == currencyName)
+                {
+                    return category.BaseType;
+                }
             }
         }
 
-        return null;
+        return FindItemBaseType(currencyName);
+    }
+
+    // Indexed by item name once, and again whenever the item list has changed size, rather
+    // than searched for every price - it is every item type in the game.
+    private static Dictionary<string, BaseItemType> _itemsByBaseName;
+    private static int _itemsIndexedFrom = -1;
+
+    // A path the game always resolves, looked up only so the item list is loaded before it
+    // is read, in case it fills on first use rather than up front. Other plugins resolve
+    // this same path from anywhere in the game.
+    private const string LoadItemListPath = "Metadata/Items/Currency/CurrencyRerollRare";
+
+    private static BaseItemType FindItemBaseType(string currencyName)
+    {
+        var items = RemoteMemoryObject.pTheGame?.Files?.BaseItemTypes;
+        if (items == null)
+        {
+            return null;
+        }
+
+        try
+        {
+            if (items.Contents.Count == 0)
+            {
+                items.Translate(LoadItemListPath);
+            }
+
+            if (_itemsByBaseName == null || items.Contents.Count != _itemsIndexedFrom)
+            {
+                var index = new Dictionary<string, BaseItemType>(StringComparer.OrdinalIgnoreCase);
+                foreach (var item in items.Contents.Values)
+                {
+                    // Where two items share a name, the currency is the one wanted
+                    if (item?.BaseName is not { Length: > 0 } name ||
+                        (index.TryGetValue(name, out var existing) && existing.ClassName == "StackableCurrency"))
+                    {
+                        continue;
+                    }
+
+                    index[name] = item;
+                }
+
+                _itemsByBaseName = index;
+                _itemsIndexedFrom = items.Contents.Count;
+            }
+
+            return _itemsByBaseName.GetValueOrDefault(CurrencyNames.ToSingular(currencyName));
+        }
+        catch (Exception)
+        {
+            return null;
+        }
     }
 
     // What the room pays out, not what one of them is worth. The quantity is the measured

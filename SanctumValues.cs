@@ -57,6 +57,52 @@ public static class CurrencyNames
     private static readonly IReadOnlyDictionary<string, string> Full =
         Short.ToDictionary(x => x.Value, x => x.Key, StringComparer.OrdinalIgnoreCase);
 
+    // The reward table names a currency in the plural - "Divine Orbs" - and the game's item
+    // list names the item, "Divine Orb". Written out rather than worked out, because the
+    // rule has exceptions: Orbs of Horizon is an Orb of Horizons.
+    private static readonly IReadOnlyDictionary<string, string> Singular = new Dictionary<string, string>
+    {
+        ["Mirrors of Kalandra"] = "Mirror of Kalandra",
+        ["Volatile Vaal Orbs"] = "Volatile Vaal Orb",
+        ["Fracturing Orbs"] = "Fracturing Orb",
+        ["Divine Orbs"] = "Divine Orb",
+        ["Veiled Chaos Orbs"] = "Veiled Chaos Orb",
+        ["Sacred Orbs"] = "Sacred Orb",
+        ["Orbs of Annulment"] = "Orb of Annulment",
+        ["Ancient Orbs"] = "Ancient Orb",
+        ["Divine Vessels"] = "Divine Vessel",
+        ["Chaos Orbs"] = "Chaos Orb",
+        ["Chromatic Orbs"] = "Chromatic Orb",
+        ["Gemcutter's Prisms"] = "Gemcutter's Prism",
+        ["Orbs of Alteration"] = "Orb of Alteration",
+        ["Orbs of Chance"] = "Orb of Chance",
+        ["Glassblower's Baubles"] = "Glassblower's Bauble",
+        ["Jeweller's Orbs"] = "Jeweller's Orb",
+        ["Orbs of Alchemy"] = "Orb of Alchemy",
+        ["Orbs of Fusing"] = "Orb of Fusing",
+        ["Orbs of Scouring"] = "Orb of Scouring",
+        ["Cartographer's Chisels"] = "Cartographer's Chisel",
+        ["Orbs of Binding"] = "Orb of Binding",
+        ["Orbs of Regret"] = "Orb of Regret",
+        ["Blessed Orbs"] = "Blessed Orb",
+        ["Vaal Orbs"] = "Vaal Orb",
+        ["Orbs of Horizon"] = "Orb of Horizons",
+        ["Instilling Orbs"] = "Instilling Orb",
+        ["Regal Orbs"] = "Regal Orb",
+        ["Enkindling Orbs"] = "Enkindling Orb",
+        ["Orbs of Unmaking"] = "Orb of Unmaking",
+        ["Awakened Sextants"] = "Awakened Sextant",
+        ["Stacked Decks"] = "Stacked Deck",
+        ["Exalted Orbs"] = "Exalted Orb",
+        ["Blacksmith's Whetstones"] = "Blacksmith's Whetstone",
+        ["Armourer's Scraps"] = "Armourer's Scrap",
+        ["Orbs of Transmutation"] = "Orb of Transmutation",
+        ["Orbs of Augmentation"] = "Orb of Augmentation",
+    };
+
+    public static string ToSingular(string currency) =>
+        currency != null && Singular.TryGetValue(currency, out var name) ? name : currency;
+
     public static string ToShort(string currency) =>
         currency != null && Short.TryGetValue(currency, out var name) ? name : currency;
 
