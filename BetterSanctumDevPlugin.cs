@@ -47,6 +47,10 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
     private readonly Dictionary<string, double> _priceByCurrency = new Dictionary<string, double>();
     private readonly Stopwatch _sincePriceCacheStopwatch = Stopwatch.StartNew();
 
+    // What the last look at the prices found - by a reload, an export or the end of a run -
+    // shown under the reload button
+    private string _priceStatus;
+
     // Logs/BetterSanctumDev under the HUD root. Not DirectoryFullName, which is not dependable
     // for source-compiled plugins, and not the shared Logs folder directly, which every
     // other plugin writes into too.
@@ -224,11 +228,13 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
             pulled = snapshot.PulledAt;
             league = string.IsNullOrEmpty(league) ? snapshot.League : league;
             note = $"Priced from a snapshot saved {snapshot.PulledAt:yyyy-MM-dd HH:mm} - live prices were not available when this was exported.";
+            _priceStatus = $"Nothing priced: {problem}. Exports will use the prices saved {snapshot.PulledAt:yyyy-MM-dd HH:mm}.";
             return true;
         }
 
         prices = null;
         pulled = default;
+        _priceStatus = $"Nothing priced: {problem}. Nothing saved either, so exports will refuse until prices load.";
         return false;
     }
 
@@ -278,6 +284,11 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
 
             File.WriteAllText(PriceSnapshotPath,
                 Newtonsoft.Json.JsonConvert.SerializeObject(snapshot, Newtonsoft.Json.Formatting.Indented));
+
+            var divine = GetDivineChaosRate();
+            _priceStatus = $"{prices.Count(x => x.Chaos > 0)} of {prices.Count} priced" +
+                           (divine > 0 ? $", divine {divine:0.#}c" : "") +
+                           $" - saved {snapshot.PulledAt:HH:mm}";
         }
         catch (Exception)
         {
@@ -297,6 +308,23 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
         {
             return null;
         }
+    }
+
+    // Drops every cached price and reads them again now. It cannot hurry the price plugin
+    // along, but it can say whether there is anything there yet - which is the question to
+    // have answered before an export - and keep what it finds for an export to fall back on.
+    //
+    // The same resolution the export uses, so the status it leaves is exactly what an
+    // export pressed next would find.
+    private void ReloadPrices()
+    {
+        _priceByCurrency.Clear();
+        _sincePriceCacheStopwatch.Restart();
+        _divineChaosRate = 0;
+        ResolvePriceLookup(force: true);
+
+        TryResolveExportPrices(out _, out _, out _, out _, out _);
+        LogMessage($"[BetterSanctumDev] {_priceStatus ?? "prices reloaded"}", 10);
     }
 
     private void OpenTrackingFolder()
@@ -322,6 +350,8 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
         Settings.RunTracking.OpenTrackingFolder = OpenTrackingFolder;
         Settings.RunTracking.ExportWorkbook = ExportTrackingWorkbook;
         Settings.RunTracking.ExportTemplate = ExportTrackingTemplate;
+        Settings.RunTracking.ReloadPrices = ReloadPrices;
+        Settings.RunTracking.PriceStatusProvider = () => _priceStatus;
         _effectHelper = new EffectHelper(GameController, Graphics, Settings);
         _rewardTracker = new RewardTracker(LogFilePath("sanctum-rewards.csv"));
         _probe = new SanctumProbe(LogFilePath("sanctum-probe.txt"));
@@ -362,9 +392,10 @@ public class BetterSanctumDevPlugin : BaseSettingsPlugin<BetterSanctumDevSetting
     // is installed registers it in its own Initialise, which may run after ours. Null
     // simply means neither is there, and prices are then left out rather than the feature
     // failing loudly.
-    private Func<BaseItemType, double> ResolvePriceLookup()
+    // force skips the five second wait between retries, for a reload asked for by hand
+    private Func<BaseItemType, double> ResolvePriceLookup(bool force = false)
     {
-        if (_currencyPrice != null || _sincePriceLookupStopwatch.Elapsed < TimeSpan.FromSeconds(5))
+        if (_currencyPrice != null || (!force && _sincePriceLookupStopwatch.Elapsed < TimeSpan.FromSeconds(5)))
         {
             return _currencyPrice;
         }

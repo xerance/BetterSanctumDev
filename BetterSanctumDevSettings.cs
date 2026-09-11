@@ -1028,6 +1028,15 @@ public class RunTrackingSettings
     [JsonIgnore]
     public Action ExportTemplate { get; set; }
 
+    // Set by the plugin. Drops the cached prices, reads them again, and keeps what it finds
+    // for exports to fall back on.
+    [JsonIgnore]
+    public Action ReloadPrices { get; set; }
+
+    // What the last look at the prices found, for the line under the reload button
+    [JsonIgnore]
+    public Func<string> PriceStatusProvider { get; set; }
+
     public TrackingProfile Profile()
     {
         var name = CurrentProfile != null && Profiles.ContainsKey(CurrentProfile)
@@ -1094,6 +1103,24 @@ public class RunTrackingSettings
 
                 SettingsHelp.Hint("Writes sanctum-run-template.xlsx: the same workbook with no runs in it, twenty pairs of empty rows to fill in by hand." +
                      "\n\nThe totals are the same formulas, so a quantity typed into a currency column prices itself. For recording runs without the HUD having written them - the columns are the ones this list tracks and the prices are today's.");
+
+                // On a line of its own, with what it found under it, since the point of it
+                // is to see whether the prices are there before relying on them.
+                if (ImGui.Button("Reload prices##reloadPrices"))
+                {
+                    ReloadPrices?.Invoke();
+                }
+
+                SettingsHelp.Hint("Reads every price again now, rather than waiting on the cache, and says how many came back." +
+                     "\n\nIt cannot make the price plugin load any faster - right after launch it may still be reading its data, and this will say so. What it does is tell you, before you export, whether there is anything to price with." +
+                     "\n\nWhen prices are there it also saves them, so an export at a moment they are not - at character select, or while the price plugin loads - has something to fall back on. The map and the routing pick the fresh prices up as well.");
+
+                var priceStatus = PriceStatusProvider?.Invoke();
+                if (!string.IsNullOrEmpty(priceStatus))
+                {
+                    ImGui.SameLine();
+                    SettingsHelp.DisabledText(priceStatus);
+                }
 
                 // Where the runs go, said outright. The folder is named after the selected
                 // list, and nothing else on screen made that connection visible.
