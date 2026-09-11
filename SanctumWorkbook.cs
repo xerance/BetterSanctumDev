@@ -518,6 +518,8 @@ public static class SanctumWorkbook
         var last = dataRows;
         var source = ColumnName(sourceColumn + FirstDataColumn);
         var sourceRange = $"${source}${first}:${source}${last}";
+        var dateColumn = headers.FindIndex(x => string.Equals(x, "date", StringComparison.OrdinalIgnoreCase));
+        var date = dateColumn >= 0 ? ColumnName(dateColumn + FirstDataColumn) : null;
 
         var xml = new StringBuilder();
         xml.Append($"<row r=\"{line}\">");
@@ -531,7 +533,16 @@ public static class SanctumWorkbook
             {
                 // How many runs are above, rather than the last run's number: a file whose
                 // rows have been sorted or pruned still counts what is in it.
-                xml.Append($"<c r=\"{reference}\" s=\"{StyleFooterRuns}\"><f>COUNTIF({sourceRange},&quot;run&quot;)</f></c>");
+                //
+                // Only run rows with a date. Every exported run has one, but the blank
+                // template arrives with all twenty rows already marked run - counting those
+                // alone made an empty template twenty runs, and divided a few filled-in runs'
+                // haul by twenty runs' worth of time. A run recorded by hand counts once it
+                // is dated.
+                var count = date == null
+                    ? $"COUNTIF({sourceRange},&quot;run&quot;)"
+                    : $"COUNTIFS({sourceRange},&quot;run&quot;,${date}${first}:${date}${last},&quot;&lt;&gt;&quot;)";
+                xml.Append($"<c r=\"{reference}\" s=\"{StyleFooterRuns}\"><f>{count}</f></c>");
                 continue;
             }
 
