@@ -55,6 +55,8 @@ public static class SanctumWorkbook
     private const int StyleDuration = 12;
     private const int StyleDurationBand = 13;
     private const int StyleFooterDuration = 14;
+    private const int StyleFooterRuns = 15;
+    private const int StyleFooterMinutes = 16;
 
     // "17m08s" is what the CSV holds, because that is what reads well in a text file. A
     // spreadsheet cannot add up text, so here it becomes a span of time - which displays
@@ -281,6 +283,18 @@ public static class SanctumWorkbook
             var width = currencyIndexes.Contains(column)
                 ? currencyWidth
                 : Math.Clamp(rows.Max(row => keep[column] < row.Count ? row[keep[column]].Length : 0) + 2, 6, 24);
+
+            // Room for what the rows under the runs show in these two, which is wider than
+            // the run numbers and run/deal markers above them, in bold: "100 runs" and
+            // "20 min/run"
+            if (string.Equals(headers[column], "run", StringComparison.OrdinalIgnoreCase))
+            {
+                width = Math.Max(width, 10);
+            }
+            else if (string.Equals(headers[column], "source", StringComparison.OrdinalIgnoreCase))
+            {
+                width = Math.Max(width, 13);
+            }
             xml.Append($"<col min=\"{column + FirstDataColumn}\" max=\"{column + FirstDataColumn}\" width=\"{width}\" customWidth=\"1\"/>");
         }
 
@@ -427,16 +441,15 @@ public static class SanctumWorkbook
         int sourceColumn,
         int durationColumn)
     {
-        var dateColumn = headers.FindIndex(x => string.Equals(x, "date", StringComparison.OrdinalIgnoreCase));
         if (dataRows < 2 || currencyIndexes.Count == 0 ||
-            dateColumn < 0 || runColumn < 0 || sourceColumn < 0 || durationColumn < 0)
+            runColumn < 0 || sourceColumn < 0 || durationColumn < 0)
         {
             return "";
         }
 
         var footer = dataRows + 1;
         var line = dataRows + 2;
-        var minutes = ColumnName(dateColumn + FirstDataColumn) + line;
+        var minutes = ColumnName(sourceColumn + FirstDataColumn) + line;
         var runs = ColumnName(runColumn + FirstDataColumn) + line;
         var duration = ColumnName(durationColumn + FirstDataColumn) + line;
 
@@ -448,17 +461,15 @@ public static class SanctumWorkbook
         {
             var reference = ColumnName(column + FirstDataColumn) + line;
 
-            if (column == dateColumn)
+            if (column == runColumn)
             {
-                xml.Append($"<c r=\"{reference}\" s=\"{StyleFooter}\"><v>{NormalisedRunMinutes}</v></c>");
-            }
-            else if (column == runColumn)
-            {
-                xml.Append($"<c r=\"{reference}\" s=\"{StyleFooter}\"><f>{ColumnName(column + FirstDataColumn)}{footer}</f></c>");
+                xml.Append($"<c r=\"{reference}\" s=\"{StyleFooterRuns}\"><f>{ColumnName(column + FirstDataColumn)}{footer}</f></c>");
             }
             else if (column == sourceColumn)
             {
-                xml.Append(TextCell(reference, "min per run", StyleFooter));
+                // The minutes, beside the run count and reading "20 min/run" through the
+                // cell's format, so the unit is attached to the number it belongs to
+                xml.Append($"<c r=\"{reference}\" s=\"{StyleFooterMinutes}\"><v>{NormalisedRunMinutes}</v></c>");
             }
             else if (column == durationColumn)
             {
@@ -520,7 +531,7 @@ public static class SanctumWorkbook
             {
                 // How many runs are above, rather than the last run's number: a file whose
                 // rows have been sorted or pruned still counts what is in it.
-                xml.Append($"<c r=\"{reference}\" s=\"{StyleFooter}\"><f>COUNTIF({sourceRange},&quot;run&quot;)</f></c>");
+                xml.Append($"<c r=\"{reference}\" s=\"{StyleFooterRuns}\"><f>COUNTIF({sourceRange},&quot;run&quot;)</f></c>");
                 continue;
             }
 
@@ -532,11 +543,6 @@ public static class SanctumWorkbook
                 continue;
             }
 
-            if (column == sourceColumn)
-            {
-                xml.Append(TextCell(reference, "total runs", StyleFooter));
-                continue;
-            }
 
             // Summed outright rather than through SUMIF: only run rows carry a duration,
             // so there is nothing on a deal row to exclude.
@@ -761,7 +767,12 @@ public static class SanctumWorkbook
     private static string Styles() =>
         "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
         $"<styleSheet xmlns=\"{Main}\">" +
-        "<numFmts count=\"2\">" +
+        "<numFmts count=\"4\">" +
+        // The unit carried by the number's own format, so a count reads as "7 runs" and the
+        // minutes as "20 min/run" while both stay numbers a formula can use - a label in the
+        // cell beside a number reads as belonging to whichever number it happens to follow.
+        "<numFmt numFmtId=\"166\" formatCode=\"[=1]0&quot; run&quot;;0&quot; runs&quot;\"/>" +
+        "<numFmt numFmtId=\"167\" formatCode=\"0&quot; min/run&quot;\"/>" +
         "<numFmt numFmtId=\"164\" formatCode=\"yyyy\\-mm\\-dd\"/>" +
         // Square brackets on the hours so a total past twenty-four does not wrap round to
         // nothing, which is what a plain h:mm:ss would do to a session of any length.
@@ -783,7 +794,7 @@ public static class SanctumWorkbook
         "</fills>" +
         "<borders count=\"1\"><border/></borders>" +
         "<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>" +
-        "<cellXfs count=\"15\">" +
+        "<cellXfs count=\"17\">" +
         "<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/>" +
         "<xf numFmtId=\"0\" fontId=\"1\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyFont=\"1\"/>" +
         "<xf numFmtId=\"164\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>" +
@@ -799,6 +810,8 @@ public static class SanctumWorkbook
         "<xf numFmtId=\"165\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>" +
         "<xf numFmtId=\"165\" fontId=\"0\" fillId=\"2\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\" applyFill=\"1\"/>" +
         "<xf numFmtId=\"165\" fontId=\"1\" fillId=\"7\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\" applyFont=\"1\" applyFill=\"1\"/>" +
+        "<xf numFmtId=\"166\" fontId=\"1\" fillId=\"7\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\" applyFont=\"1\" applyFill=\"1\"/>" +
+        "<xf numFmtId=\"167\" fontId=\"1\" fillId=\"7\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\" applyFont=\"1\" applyFill=\"1\"/>" +
         "</cellXfs>" +
         "</styleSheet>";
 }
