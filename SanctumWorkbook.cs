@@ -285,15 +285,14 @@ public static class SanctumWorkbook
                 : Math.Clamp(rows.Max(row => keep[column] < row.Count ? row[keep[column]].Length : 0) + 2, 6, 24);
 
             // Room for what the rows under the runs show in these two, which is wider than
-            // the run numbers and run/deal markers above them, in bold: "100 runs" and
-            // "20 min per run"
+            // the run numbers and dates above them, in bold: "100 runs" and "20 min/run"
             if (string.Equals(headers[column], "run", StringComparison.OrdinalIgnoreCase))
             {
                 width = Math.Max(width, 10);
             }
-            else if (string.Equals(headers[column], "source", StringComparison.OrdinalIgnoreCase))
+            else if (string.Equals(headers[column], "date", StringComparison.OrdinalIgnoreCase))
             {
-                width = Math.Max(width, 17);
+                width = Math.Max(width, 13);
             }
             xml.Append($"<col min=\"{column + FirstDataColumn}\" max=\"{column + FirstDataColumn}\" width=\"{width}\" customWidth=\"1\"/>");
         }
@@ -441,15 +440,16 @@ public static class SanctumWorkbook
         int sourceColumn,
         int durationColumn)
     {
+        var dateColumn = headers.FindIndex(x => string.Equals(x, "date", StringComparison.OrdinalIgnoreCase));
         if (dataRows < 2 || currencyIndexes.Count == 0 ||
-            runColumn < 0 || sourceColumn < 0 || durationColumn < 0)
+            dateColumn < 0 || runColumn < 0 || durationColumn < 0)
         {
             return "";
         }
 
         var footer = dataRows + 1;
         var line = dataRows + 2;
-        var minutes = ColumnName(sourceColumn + FirstDataColumn) + line;
+        var minutes = ColumnName(dateColumn + FirstDataColumn) + line;
         var runs = ColumnName(runColumn + FirstDataColumn) + line;
         var duration = ColumnName(durationColumn + FirstDataColumn) + line;
 
@@ -461,15 +461,15 @@ public static class SanctumWorkbook
         {
             var reference = ColumnName(column + FirstDataColumn) + line;
 
-            if (column == runColumn)
+            if (column == dateColumn)
+            {
+                // The minutes, straight after the row's name so it reads as one phrase -
+                // "NORMALISED 20 min/run" - with the unit carried by the cell's format
+                xml.Append($"<c r=\"{reference}\" s=\"{StyleFooterMinutes}\"><v>{NormalisedRunMinutes}</v></c>");
+            }
+            else if (column == runColumn)
             {
                 xml.Append($"<c r=\"{reference}\" s=\"{StyleFooterRuns}\"><f>{ColumnName(column + FirstDataColumn)}{footer}</f></c>");
-            }
-            else if (column == sourceColumn)
-            {
-                // The minutes, beside the run count and reading "20 min per run" through the
-                // cell's format, so the unit is attached to the number it belongs to
-                xml.Append($"<c r=\"{reference}\" s=\"{StyleFooterMinutes}\"><v>{NormalisedRunMinutes}</v></c>");
             }
             else if (column == durationColumn)
             {
@@ -769,10 +769,10 @@ public static class SanctumWorkbook
         $"<styleSheet xmlns=\"{Main}\">" +
         "<numFmts count=\"4\">" +
         // The unit carried by the number's own format, so a count reads as "7 runs" and the
-        // minutes as "20 min per run" while both stay numbers a formula can use - a label in the
+        // minutes as "20 min/run" while both stay numbers a formula can use - a label in the
         // cell beside a number reads as belonging to whichever number it happens to follow.
         "<numFmt numFmtId=\"166\" formatCode=\"[=1]0&quot; run&quot;;0&quot; runs&quot;\"/>" +
-        "<numFmt numFmtId=\"167\" formatCode=\"0&quot; min per run&quot;\"/>" +
+        "<numFmt numFmtId=\"167\" formatCode=\"0&quot; min/run&quot;\"/>" +
         "<numFmt numFmtId=\"164\" formatCode=\"yyyy\\-mm\\-dd\"/>" +
         // Square brackets on the hours so a total past twenty-four does not wrap round to
         // nothing, which is what a plain h:mm:ss would do to a session of any length.
