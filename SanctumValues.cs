@@ -139,7 +139,7 @@ public static class SanctumValues
 
     // Both scales move in fifths of their anchor, so a step is the same size on each and
     // the numbers stay easy to hold in your head.
-    private const double StepsPerAnchor = 5.0;
+    public const double StepsPerAnchor = 5.0;
 
     public static double RoomValue(int tier, double anchorChaos)
     {

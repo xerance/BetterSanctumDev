@@ -289,11 +289,16 @@ public class BetterSanctumDevSettings : ISettings
                 if (ImGui.TreeNode("Room tiering"))
                 {
                     DisabledText("Applies to both the fight room and the reward room, so a room is counted twice from this one list.");
+                    var (roomDivine, roomDivineNote) = EffectiveDivineChaos();
+                    var roomAnchor = roomDivine * Routing.RoomValuePercentOfDivine.Value / 100.0;
+                    DisabledText($"Each step is {DescribeStep(roomAnchor, roomDivine)}: a fifth of the room anchor, {Routing.RoomValuePercentOfDivine.Value}% of a divine{roomDivineNote}.");
+                    DisabledText("The figure on a slider is what one room of that type adds to a route, before the run type shifts it.");
                     ImGui.InputTextWithHint("##RoomFilter", "Filter", ref roomFilter, 100);
                     foreach (var type in RoomTypes.Where(t => t.Contains(roomFilter, StringComparison.InvariantCultureIgnoreCase)))
                     {
                         var currentValue = GetRoomTier(type);
-                        if (ImGui.SliderInt(type, ref currentValue, 0, SanctumValues.RoomTierMax))
+                        var roomFormat = $"%d  {DivineFigure(SanctumValues.RoomValue(currentValue, roomAnchor), roomDivine)}";
+                        if (ImGui.SliderInt(type, ref currentValue, 0, SanctumValues.RoomTierMax, roomFormat))
                         {
                             profile.RoomTiers[type] = currentValue;
                         }
@@ -305,12 +310,18 @@ public class BetterSanctumDevSettings : ISettings
                 if (ImGui.TreeNode("Affliction tiering"))
                 {
                     DisabledText("Filter matches names and descriptions, and several words all have to match.");
+                    var (afflictionDivine, afflictionDivineNote) = EffectiveDivineChaos();
+                    var afflictionAnchor = afflictionDivine * Routing.AfflictionCostPercentOfDivine.Value / 100.0;
+                    DisabledText($"Each step costs {DescribeStep(afflictionAnchor, afflictionDivine)}: a fifth of the affliction anchor, {Routing.AfflictionCostPercentOfDivine.Value}% of a divine{afflictionDivineNote}. 6 is never walked into.");
                     ImGui.InputTextWithHint("##AfflictionFilter", "Filter", ref afflictionFilter, 100);
                     // Name and description are searched as one string, so terms can span both
                     foreach (var (type, description) in AfflictionTypes.Where(t => MatchesFilter($"{t.Item1} {t.Item2}", afflictionFilter)))
                     {
                         var currentValue = GetAfflictionTier(type);
-                        if (ImGui.SliderInt(type, ref currentValue, 0, SanctumValues.AfflictionTierMax))
+                        var afflictionFormat = SanctumValues.IsHardBlock(currentValue)
+                            ? "%d  blocked"
+                            : $"%d  {DivineFigure(SanctumValues.AfflictionCost(currentValue, afflictionAnchor), afflictionDivine)}";
+                        if (ImGui.SliderInt(type, ref currentValue, 0, SanctumValues.AfflictionTierMax, afflictionFormat))
                         {
                             profile.AfflictionTiers[type] = currentValue;
                         }
@@ -665,6 +676,33 @@ public class BetterSanctumDevSettings : ISettings
         var reason = DivinePriceStatusProvider?.Invoke();
         return $", about {chaos:0}c against the fallback divine price of {divine:0}c" +
                (reason is { Length: > 0 } ? $", because {reason}" : "");
+    }
+
+    // The divine the tier figures are quoted against: the market rate when there is one,
+    // otherwise the routing fallback, with a note saying it is the fallback.
+    private (double Divine, string Note) EffectiveDivineChaos()
+    {
+        var market = DivineChaosProvider?.Invoke() ?? 0;
+        return market > 0
+            ? (market, $", with a divine at {market:0}c")
+            : (Routing.DivineChaosFallback.Value, $", against the fallback divine price of {Routing.DivineChaosFallback.Value}c");
+    }
+
+    private static string DescribeStep(double anchorChaos, double divineChaos)
+    {
+        var step = anchorChaos / SanctumValues.StepsPerAnchor;
+        return divineChaos > 0 ? $"{step / divineChaos:0.00}d ({step:0}c)" : $"{step:0}c";
+    }
+
+    // Goes into a slider's format string, so it must never contain a percent sign
+    private static string DivineFigure(double chaos, double divineChaos)
+    {
+        if (divineChaos <= 0 || Math.Abs(chaos / divineChaos) < 0.005)
+        {
+            return "0d";
+        }
+
+        return $"{chaos / divineChaos:+0.00;-0.00}d";
     }
 
     // Shared with the settings groups below, which draw their own controls
